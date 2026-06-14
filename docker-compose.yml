@@ -1,0 +1,125 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-orkestr_crm}
+      POSTGRES_USER: ${POSTGRES_USER:-orkestr}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-orkestr}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:8
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: infra/docker/node.Dockerfile
+    command: pnpm --filter @orkestr-crm/api dev
+    environment:
+      NODE_ENV: development
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL: postgres://${POSTGRES_USER:-orkestr}:${POSTGRES_PASSWORD:-orkestr}@postgres:5432/${POSTGRES_DB:-orkestr_crm}
+      REDIS_URL: redis://redis:6379
+      API_HOST: 0.0.0.0
+      API_PORT: 3000
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  mcp:
+    build:
+      context: .
+      dockerfile: infra/docker/node.Dockerfile
+    command: pnpm --filter @orkestr-crm/mcp dev
+    environment:
+      NODE_ENV: development
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL: postgres://${POSTGRES_USER:-orkestr}:${POSTGRES_PASSWORD:-orkestr}@postgres:5432/${POSTGRES_DB:-orkestr_crm}
+      REDIS_URL: redis://redis:6379
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 3010
+    ports:
+      - "127.0.0.1:3010:3010"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: infra/docker/node.Dockerfile
+    command: pnpm --filter @orkestr-crm/web start
+    environment:
+      NODE_ENV: development
+    ports:
+      - "127.0.0.1:4200:4200"
+    depends_on:
+      - api
+      - mcp
+
+  worker:
+    build:
+      context: .
+      dockerfile: infra/docker/node.Dockerfile
+    command: pnpm --filter @orkestr-crm/worker dev
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgres://${POSTGRES_USER:-orkestr}:${POSTGRES_PASSWORD:-orkestr}@postgres:5432/${POSTGRES_DB:-orkestr_crm}
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: infra/docker/node.Dockerfile
+    command: pnpm --filter @orkestr-crm/scheduler dev
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgres://${POSTGRES_USER:-orkestr}:${POSTGRES_PASSWORD:-orkestr}@postgres:5432/${POSTGRES_DB:-orkestr_crm}
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  backup:
+    build:
+      context: .
+      dockerfile: infra/docker/node.Dockerfile
+    command: pnpm --filter @orkestr-crm/backup dev
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgres://${POSTGRES_USER:-orkestr}:${POSTGRES_PASSWORD:-orkestr}@postgres:5432/${POSTGRES_DB:-orkestr_crm}
+      BACKUP_GITHUB_REPO: ${BACKUP_GITHUB_REPO:-local/dev-backups}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
