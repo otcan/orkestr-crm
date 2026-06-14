@@ -24,11 +24,15 @@ docker compose up --build
 
 The initial scaffold binds published ports to `127.0.0.1` by default. Put a firewall or authenticated reverse proxy in front of it before exposing it beyond the host.
 
-The initial scaffold exposes locally:
+The initial scaffold exposes locally on project-specific high ports:
 
-- API health: `http://localhost:3000/api/health`
-- MCP HTTP health: `http://localhost:3010/health`
-- Web app: `http://localhost:4200`
+- Web app: `http://127.0.0.1:18180`
+- API health: `http://127.0.0.1:18181/api/health`
+- MCP HTTP health: `http://127.0.0.1:18182/health`
+- Postgres host port: `127.0.0.1:18183`
+- Redis host port: `127.0.0.1:18184`
+
+Override ports with `WEB_PORT`, `API_PORT`, `MCP_PORT`, `HOST_WEB_PORT`, `HOST_API_PORT`, `HOST_MCP_PORT`, `HOST_POSTGRES_PORT`, and `HOST_REDIS_PORT`.
 
 ## Development
 
@@ -50,8 +54,8 @@ pnpm crm smoke
 
 The CLI uses:
 
-- `CRM_API_URL`, default `http://127.0.0.1:3000`
-- `CRM_MCP_URL`, default `http://127.0.0.1:3010/mcp`
+- `CRM_API_URL`, default `http://127.0.0.1:18181`
+- `CRM_MCP_URL`, default `http://127.0.0.1:18182/mcp`
 
 ## Database
 

@@ -42,8 +42,8 @@ function parseArgs(argv: string[]) {
 
 function getContext(flags: Map<string, string | boolean>): CliContext {
   return {
-    apiUrl: String(flags.get("api-url") ?? process.env.CRM_API_URL ?? "http://127.0.0.1:3000"),
-    mcpUrl: String(flags.get("mcp-url") ?? process.env.CRM_MCP_URL ?? "http://127.0.0.1:3010/mcp"),
+    apiUrl: String(flags.get("api-url") ?? process.env.CRM_API_URL ?? "http://127.0.0.1:18181"),
+    mcpUrl: String(flags.get("mcp-url") ?? process.env.CRM_MCP_URL ?? "http://127.0.0.1:18182/mcp"),
     json: flags.get("json") === true
   };
 }

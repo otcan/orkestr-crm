@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "ng serve --host 127.0.0.1 --port 4200 --proxy-config proxy.conf.cjs",
-    "start:container": "ng serve --host 0.0.0.0 --port 4200 --proxy-config proxy.conf.cjs",
+    "start": "node env-port.cjs",
+    "start:container": "WEB_HOST=0.0.0.0 WEB_PORT=18180 node env-port.cjs",
     "build": "ng build",
     "typecheck": "ng build --configuration development"
   },

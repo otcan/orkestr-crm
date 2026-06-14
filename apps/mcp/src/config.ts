@@ -13,9 +13,8 @@ export function loadConfig(): McpConfig {
 
   return {
     host: process.env.MCP_HOST ?? "0.0.0.0",
-    port: Number(process.env.MCP_PORT ?? 3010),
+    port: Number(process.env.MCP_PORT ?? 18182),
     databaseUrl,
     logLevel: process.env.LOG_LEVEL ?? "info"
   };
 }
-

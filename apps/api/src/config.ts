@@ -14,10 +14,9 @@ export function loadConfig(): ApiConfig {
 
   return {
     host: process.env.API_HOST ?? "0.0.0.0",
-    port: Number(process.env.API_PORT ?? 3000),
+    port: Number(process.env.API_PORT ?? 18181),
     databaseUrl,
     nodeEnv: process.env.NODE_ENV ?? "development",
     logLevel: process.env.LOG_LEVEL ?? "info"
   };
 }
-
