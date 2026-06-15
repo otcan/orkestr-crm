@@ -248,23 +248,6 @@ export async function buildServer() {
     return reply.status(201).send(booking);
   });
 
-  app.get("/api/integration-accounts", async () => services.listIntegrationAccounts());
-
-  app.post("/api/integration-accounts", async (request, reply) => {
-    const created = await services.upsertIntegrationAccount(request.body);
-    return reply.status(201).send(created);
-  });
-
-  app.post("/api/integration-accounts/:id/test", async (request) => {
-    const params = request.params as { id: string };
-    return services.testIntegrationAccount(params.id);
-  });
-
-  app.post("/api/integration-accounts/:id/sync", async (request) => {
-    const params = request.params as { id: string };
-    return services.syncIntegrationAccount(params.id);
-  });
-
   app.get("/api/system/backup-health", async () => services.getBackupHealth());
 
   app.get("/api/testing/synthetic", async () => services.getSyntheticDataSummary());

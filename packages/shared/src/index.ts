@@ -106,7 +106,6 @@ export const createActivitySchema = z.object({
   taskId: z.string().uuid().optional(),
   lead: createLeadSchema.optional(),
   assignmentId: z.string().uuid().optional(),
-  integrationAccountId: z.string().uuid().optional(),
   type: activityTypeSchema,
   channel: channelSchema,
   direction: directionSchema.default("internal"),
@@ -161,8 +160,7 @@ export const recordOutreachEventSchema = z.object({
       externalUrl: z.string().url().optional(),
       idempotencyKey: z.string().optional(),
       metadata: z.record(z.string(), z.unknown()).optional(),
-      occurredAt: z.string().datetime().optional(),
-      integrationAccountId: z.string().uuid().optional()
+      occurredAt: z.string().datetime().optional()
     })
     .optional()
 });

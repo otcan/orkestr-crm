@@ -50,10 +50,6 @@ export async function buildMcpHttpServer() {
       contents: [{ uri: uri.href, text: JSON.stringify(await tools.services.getBackupHealth(), null, 2) }]
     }));
 
-    server.resource("crm.integrations.health", "crm://integrations/health", async (uri) => ({
-      contents: [{ uri: uri.href, text: JSON.stringify(await tools.services.listIntegrationAccounts(), null, 2) }]
-    }));
-
     server.resource(
       "crm.lead",
       new ResourceTemplate("crm://leads/{leadId}", { list: undefined }),
@@ -361,8 +357,7 @@ export async function buildMcpHttpServer() {
             externalUrl: z.string().url().optional(),
             idempotencyKey: z.string().optional(),
             metadata: z.record(z.string(), z.unknown()).optional(),
-            occurredAt: z.string().datetime().optional(),
-            integrationAccountId: z.string().uuid().optional()
+            occurredAt: z.string().datetime().optional()
           })
           .optional()
       },
@@ -385,7 +380,7 @@ export async function buildMcpHttpServer() {
 
     server.tool(
       "crm.record_event",
-      "Append one idempotent event to the CRM timeline, such as a message, connection request, email, note, or connector sync item.",
+      "Append one idempotent event to the CRM timeline, such as a message, connection request, email, note, or meeting.",
       {
         leadId: z.string().uuid().optional(),
         personId: z.string().uuid().optional(),
@@ -415,7 +410,6 @@ export async function buildMcpHttpServer() {
           })
           .optional(),
         assignmentId: z.string().uuid().optional(),
-        integrationAccountId: z.string().uuid().optional(),
         type: z.enum([
           "connection_request_sent",
           "connection_request_received",
@@ -457,7 +451,6 @@ export async function buildMcpHttpServer() {
         companyId: z.string().uuid().optional(),
         taskId: z.string().uuid().optional(),
         assignmentId: z.string().uuid().optional(),
-        integrationAccountId: z.string().uuid().optional(),
         type: z.enum([
           "connection_request_sent",
           "connection_request_received",
@@ -519,44 +512,6 @@ export async function buildMcpHttpServer() {
         })
       },
       async (input) => toContent(await tools.services.updateAssignment(input.assignmentId, input.patch))
-    );
-
-    server.tool(
-      "crm.list_integration_accounts",
-      "List configured external integration accounts.",
-      {},
-      async () => toContent(await tools.services.listIntegrationAccounts())
-    );
-
-    server.tool(
-      "crm.create_integration_account",
-      "Create a connector account placeholder for SalesNav, LinkedIn, email, or calendar.",
-      {
-        provider: z.enum(["linkedin", "salesnav", "gmail", "outlook", "google_calendar", "microsoft_calendar", "caldav"]),
-        displayName: z.string().min(1),
-        status: z.enum(["active", "needs_auth", "paused", "error", "archived"]).default("needs_auth"),
-        authType: z.string().default("oauth"),
-        credentialsRef: z.string().optional()
-      },
-      async (input) => toContent(await tools.services.upsertIntegrationAccount(input))
-    );
-
-    server.tool(
-      "crm.test_integration_account",
-      "Test a connector account without importing data.",
-      {
-        integrationAccountId: z.string().uuid()
-      },
-      async (input) => toContent(await tools.services.testIntegrationAccount(input.integrationAccountId))
-    );
-
-    server.tool(
-      "crm.sync_integration_account",
-      "Run an idempotent connector sync placeholder for an integration account.",
-      {
-        integrationAccountId: z.string().uuid()
-      },
-      async (input) => toContent(await tools.services.syncIntegrationAccount(input.integrationAccountId))
     );
 
     server.tool(

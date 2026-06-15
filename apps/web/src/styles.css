@@ -163,6 +163,10 @@ h2 {
   gap: 16px;
 }
 
+.panels.single {
+  grid-template-columns: 1fr;
+}
+
 .panels.lower {
   margin-top: 16px;
 }
@@ -187,14 +191,12 @@ h2 {
   cursor: pointer;
 }
 
-.queue,
-.connectors {
+.queue {
   display: grid;
   gap: 8px;
 }
 
-.queue-row,
-.connector {
+.queue-row {
   display: flex;
   justify-content: space-between;
   gap: 12px;
@@ -212,8 +214,31 @@ h2 {
   color: #667085;
 }
 
+.queue-row small {
+  display: block;
+  margin-top: 6px;
+  color: #475569;
+  line-height: 1.4;
+}
+
 .queue-row time {
   color: #475569;
+  white-space: nowrap;
+}
+
+.event-row {
+  align-items: flex-start;
+}
+
+.empty {
+  min-height: 48px;
+  display: grid;
+  place-items: center start;
+  padding: 10px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 6px;
+  color: #667085;
+  background: #fbfdff;
 }
 
 .good-text {

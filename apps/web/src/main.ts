@@ -1,5 +1,5 @@
-import { ChangeDetectionStrategy, Component, computed, signal } from "@angular/core";
 import { CommonModule } from "@angular/common";
+import { ChangeDetectionStrategy, Component, computed, signal } from "@angular/core";
 import { FormsModule } from "@angular/forms";
 import { bootstrapApplication } from "@angular/platform-browser";
 
@@ -8,6 +8,38 @@ interface Metric {
   value: string;
   tone: "neutral" | "good" | "warn";
 }
+
+interface LeadRow {
+  id: string;
+  fullName: string;
+  company?: string | null;
+  email?: string | null;
+  source?: string | null;
+  updatedAt: string;
+}
+
+interface TaskRow {
+  id: string;
+  title: string;
+  status: string;
+  type: string;
+  priority: number;
+  dueAt?: string | null;
+  lead?: LeadRow | null;
+}
+
+interface EventRow {
+  id: string;
+  type: string;
+  channel: string;
+  direction: string;
+  subject?: string | null;
+  body?: string | null;
+  occurredAt: string;
+  lead?: LeadRow | null;
+}
+
+type NavItem = "Dashboard" | "Leads" | "Tasks" | "Events" | "Settings";
 
 @Component({
   selector: "oc-root",
@@ -21,13 +53,13 @@ interface Metric {
           <span class="brand-mark">OC</span>
           <div>
             <strong>Orkestr CRM</strong>
-            <small>MCP control plane</small>
+            <small>Docker CRM ledger</small>
           </div>
         </div>
 
         <nav>
           @for (item of navItems; track item) {
-            <button type="button" [class.active]="item === selectedNav()" (click)="selectedNav.set(item)">
+            <button type="button" [class.active]="item === selectedNav()" (click)="selectNav(item)">
               {{ item }}
             </button>
           }
@@ -40,178 +72,256 @@ interface Metric {
             <h1>{{ selectedNav() }}</h1>
             <p>{{ subtitle() }}</p>
           </div>
-          <div class="status-pill" [class.warn]="backupHealth() !== 'ok'">
+          <button type="button" class="status-pill" [class.warn]="backupHealth() !== 'ok'" (click)="refresh()">
             Backup {{ backupHealth() }}
-          </div>
+          </button>
         </header>
 
-        <section class="metrics" aria-label="CRM metrics">
-          @for (metric of metrics(); track metric.label) {
-            <article class="metric" [class.good]="metric.tone === 'good'" [class.warn]="metric.tone === 'warn'">
-              <span>{{ metric.label }}</span>
-              <strong>{{ metric.value }}</strong>
-            </article>
+        @switch (selectedNav()) {
+          @case ("Dashboard") {
+            <section class="metrics" aria-label="CRM metrics">
+              @for (metric of metrics(); track metric.label) {
+                <article class="metric" [class.good]="metric.tone === 'good'" [class.warn]="metric.tone === 'warn'">
+                  <span>{{ metric.label }}</span>
+                  <strong>{{ metric.value }}</strong>
+                </article>
+              }
+            </section>
+
+            <section class="panels">
+              <article class="panel">
+                <header>
+                  <h2>Due Tasks</h2>
+                  <button type="button" (click)="refresh()">Sync</button>
+                </header>
+                <div class="queue">
+                  @for (task of queue(); track task.id) {
+                    <div class="queue-row">
+                      <div>
+                        <strong>{{ task.title }}</strong>
+                        <span>{{ task.lead?.fullName || task.type }} · {{ task.status }}</span>
+                      </div>
+                      <time>{{ task.dueAt ? (task.dueAt | date:'short') : 'No due date' }}</time>
+                    </div>
+                  } @empty {
+                    <div class="empty">No due work.</div>
+                  }
+                </div>
+              </article>
+
+              <article class="panel">
+                <header>
+                  <h2>Recent Events</h2>
+                  <button type="button" (click)="selectNav('Events')">Open</button>
+                </header>
+                <div class="queue">
+                  @for (event of events().slice(0, 5); track event.id) {
+                    <div class="queue-row">
+                      <div>
+                        <strong>{{ event.subject || event.type }}</strong>
+                        <span>{{ event.channel }} · {{ event.direction }}</span>
+                      </div>
+                      <time>{{ event.occurredAt | date:'short' }}</time>
+                    </div>
+                  } @empty {
+                    <div class="empty">No events recorded.</div>
+                  }
+                </div>
+              </article>
+            </section>
           }
-        </section>
 
-        <section class="panels">
-          <article class="panel">
-            <header>
-              <h2>Agent Queue</h2>
-              <button type="button" (click)="refresh()">Sync</button>
-            </header>
-            <div class="queue">
-              @for (item of queue(); track item.lead) {
-                <div class="queue-row">
-                  <div>
-                    <strong>{{ item.lead }}</strong>
-                    <span>{{ item.action }}</span>
+          @case ("Leads") {
+            <section class="panels">
+              <article class="panel">
+                <header>
+                  <h2>Create Lead</h2>
+                  <button type="button" (click)="createLead()">Save</button>
+                </header>
+                <div class="form-grid">
+                  <label>
+                    Name
+                    <input [(ngModel)]="leadForm.fullName" name="fullName">
+                  </label>
+                  <label>
+                    Company
+                    <input [(ngModel)]="leadForm.company" name="company">
+                  </label>
+                  <label>
+                    Email
+                    <input [(ngModel)]="leadForm.email" name="email">
+                  </label>
+                  <label>
+                    LinkedIn URL
+                    <input [(ngModel)]="leadForm.linkedinUrl" name="linkedinUrl">
+                  </label>
+                </div>
+              </article>
+
+              <article class="panel">
+                <header>
+                  <h2>Recent Leads</h2>
+                  <button type="button" (click)="refresh()">Refresh</button>
+                </header>
+                <div class="queue">
+                  @for (lead of leads(); track lead.id) {
+                    <div class="queue-row">
+                      <div>
+                        <strong>{{ lead.fullName }}</strong>
+                        <span>{{ lead.company || lead.email || lead.source || 'No details' }}</span>
+                      </div>
+                      <time>{{ lead.updatedAt | date:'short' }}</time>
+                    </div>
+                  } @empty {
+                    <div class="empty">No leads yet.</div>
+                  }
+                </div>
+              </article>
+            </section>
+          }
+
+          @case ("Tasks") {
+            <section class="panels single">
+              <article class="panel">
+                <header>
+                  <h2>Tasks</h2>
+                  <button type="button" (click)="refresh()">Refresh</button>
+                </header>
+                <div class="queue">
+                  @for (task of tasks(); track task.id) {
+                    <div class="queue-row">
+                      <div>
+                        <strong>{{ task.title }}</strong>
+                        <span>{{ task.type }} · {{ task.status }} · priority {{ task.priority }}</span>
+                      </div>
+                      <time>{{ task.dueAt ? (task.dueAt | date:'short') : 'No due date' }}</time>
+                    </div>
+                  } @empty {
+                    <div class="empty">No tasks.</div>
+                  }
+                </div>
+              </article>
+            </section>
+          }
+
+          @case ("Events") {
+            <section class="panels single">
+              <article class="panel">
+                <header>
+                  <h2>Event Timeline</h2>
+                  <button type="button" (click)="refresh()">Refresh</button>
+                </header>
+                <div class="queue">
+                  @for (event of events(); track event.id) {
+                    <div class="queue-row event-row">
+                      <div>
+                        <strong>{{ event.subject || event.type }}</strong>
+                        <span>{{ event.channel }} · {{ event.direction }} · {{ event.lead?.fullName || 'unlinked' }}</span>
+                        @if (event.body) {
+                          <small>{{ event.body }}</small>
+                        }
+                      </div>
+                      <time>{{ event.occurredAt | date:'short' }}</time>
+                    </div>
+                  } @empty {
+                    <div class="empty">No events recorded.</div>
+                  }
+                </div>
+              </article>
+            </section>
+          }
+
+          @case ("Settings") {
+            <section class="panels single">
+              <article class="panel">
+                <header>
+                  <h2>System</h2>
+                  <button type="button" (click)="refresh()">Refresh</button>
+                </header>
+                <div class="queue">
+                  <div class="queue-row">
+                    <div>
+                      <strong>Backup</strong>
+                      <span>{{ backupHealth() }}</span>
+                    </div>
+                    <time>active</time>
                   </div>
-                  <time>{{ item.due }}</time>
-                </div>
-              }
-            </div>
-          </article>
-
-          <article class="panel">
-            <header>
-              <h2>Connectors</h2>
-              <button type="button" (click)="refresh()">Test</button>
-            </header>
-            <div class="connectors">
-              @for (connector of connectors(); track connector.name) {
-                <div class="connector">
-                  <span>{{ connector.name }}</span>
-                  <strong [class.good-text]="connector.status === 'ready'" [class.warn-text]="connector.status !== 'ready'">
-                    {{ connector.status }}
-                  </strong>
-                </div>
-              }
-            </div>
-          </article>
-        </section>
-
-        <section class="panels lower">
-          <article class="panel">
-            <header>
-              <h2>Create Lead</h2>
-              <button type="button" (click)="createLead()">Save</button>
-            </header>
-            <div class="form-grid">
-              <label>
-                Name
-                <input [(ngModel)]="leadForm.fullName" name="fullName">
-              </label>
-              <label>
-                Email
-                <input [(ngModel)]="leadForm.email" name="email">
-              </label>
-              <label>
-                LinkedIn URL
-                <input [(ngModel)]="leadForm.linkedinUrl" name="linkedinUrl">
-              </label>
-            </div>
-          </article>
-
-          <article class="panel">
-            <header>
-              <h2>Recent Leads</h2>
-              <button type="button" (click)="refresh()">Refresh</button>
-            </header>
-            <div class="queue">
-              @for (lead of leads(); track lead.id) {
-                <div class="queue-row">
-                  <div>
-                    <strong>{{ lead.fullName }}</strong>
-                    <span>{{ lead.company || lead.email || lead.source || 'No details' }}</span>
+                  <div class="queue-row">
+                    <div>
+                      <strong>Runtime</strong>
+                      <span>Docker instance; CLI and MCP run inside the instance network.</span>
+                    </div>
+                    <time>ocrm</time>
                   </div>
-                  <time>{{ lead.updatedAt | date:'short' }}</time>
                 </div>
-              }
-            </div>
-          </article>
-        </section>
+              </article>
+            </section>
+          }
+        }
       </section>
     </main>
   `,
   styles: []
 })
 export class AppComponent {
-  readonly navItems = ["Dashboard", "Leads", "Pipeline", "Scheduler", "Activities", "Integrations", "Settings"];
-  readonly selectedNav = signal("Dashboard");
+  readonly navItems: NavItem[] = ["Dashboard", "Leads", "Tasks", "Events", "Settings"];
+  readonly selectedNav = signal<NavItem>("Dashboard");
   readonly backupHealth = signal<"ok" | "degraded">("degraded");
-  readonly leads = signal<Array<{ id: string; fullName: string; company?: string; email?: string; source?: string; updatedAt: string }>>([]);
+  readonly leads = signal<LeadRow[]>([]);
+  readonly tasks = signal<TaskRow[]>([]);
+  readonly queue = signal<TaskRow[]>([]);
+  readonly events = signal<EventRow[]>([]);
   readonly leadForm = {
     fullName: "",
+    company: "",
     email: "",
     linkedinUrl: ""
   };
 
-  readonly metrics = signal<Metric[]>([
-    { label: "Due follow-ups", value: "0", tone: "warn" },
-    { label: "Active leads", value: "0", tone: "neutral" },
-    { label: "Meetings booked", value: "0", tone: "good" },
-    { label: "MCP tools", value: "5", tone: "good" }
-  ]);
-
-  readonly queue = signal([
-    { lead: "No leads yet", action: "Import or create the first lead", due: "now" },
-    { lead: "MCP queue", action: "crm.get_daily_queue is scaffolded", due: "ready" }
-  ]);
-
-  readonly connectors = signal([
-    { name: "SalesNav", status: "planned" },
-    { name: "LinkedIn", status: "planned" },
-    { name: "Email", status: "planned" },
-    { name: "Calendar", status: "planned" }
+  readonly metrics = computed<Metric[]>(() => [
+    { label: "Due tasks", value: String(this.queue().length), tone: this.queue().length ? "warn" : "good" },
+    { label: "Active leads", value: String(this.leads().length), tone: "neutral" },
+    { label: "Open tasks", value: String(this.tasks().filter((task) => task.status === "open").length), tone: "neutral" },
+    { label: "Events", value: String(this.events().length), tone: "good" }
   ]);
 
   readonly subtitle = computed(() => {
-    const selected = this.selectedNav();
-    if (selected === "Dashboard") {
-      return "Agent-first operating view for CRM state, queues, integrations, and backup health.";
+    switch (this.selectedNav()) {
+      case "Dashboard":
+        return "CRM state at a glance: due work, recent leads, and event timeline.";
+      case "Leads":
+        return "Identity-resolved people and company workflow records.";
+      case "Tasks":
+        return "Actionable CRM work owned by this instance.";
+      case "Events":
+        return "Append-only timeline for messages, emails, connection requests, notes, and meetings.";
+      case "Settings":
+        return "Instance health and Docker runtime status.";
     }
-
-    return `${selected} module scaffold is ready for implementation.`;
   });
 
   constructor() {
     void this.refresh();
   }
 
+  selectNav(item: NavItem) {
+    this.selectedNav.set(item);
+  }
+
   async refresh() {
-    const [health, leads, queue, integrations] = await Promise.all([
+    const [health, leads, queue, tasks, events] = await Promise.all([
       fetch("/api/health").then((res) => res.json()).catch(() => ({ status: "degraded" })),
       fetch("/api/leads").then((res) => res.json()).catch(() => []),
       fetch("/api/assignments/due").then((res) => res.json()).catch(() => []),
-      fetch("/api/integration-accounts").then((res) => res.json()).catch(() => [])
+      fetch("/api/tasks").then((res) => res.json()).catch(() => []),
+      fetch("/api/events?limit=50").then((res) => res.json()).catch(() => [])
     ]);
 
     this.backupHealth.set(health.status === "ok" ? "ok" : "degraded");
-    this.leads.set(leads);
-    this.queue.set(
-      queue.length
-        ? queue.map((assignment: { id: string; status: string; nextActionAt?: string }) => ({
-            lead: assignment.id,
-            action: assignment.status,
-            due: assignment.nextActionAt ?? "now"
-          }))
-        : [{ lead: "No assignments due", action: "Daily queue is clear", due: "now" }]
-    );
-    this.connectors.set(
-      integrations.length
-        ? integrations.map((integration: { displayName: string; status: string }) => ({
-            name: integration.displayName,
-            status: integration.status
-          }))
-        : this.connectors()
-    );
-    this.metrics.set([
-      { label: "Due follow-ups", value: String(queue.length), tone: queue.length ? "warn" : "good" },
-      { label: "Active leads", value: String(leads.length), tone: "neutral" },
-      { label: "Meetings booked", value: "0", tone: "good" },
-      { label: "MCP tools", value: "13", tone: "good" }
-    ]);
+    this.leads.set(Array.isArray(leads) ? leads : []);
+    this.queue.set(Array.isArray(queue) ? queue : []);
+    this.tasks.set(Array.isArray(tasks) ? tasks : []);
+    this.events.set(Array.isArray(events) ? events : []);
   }
 
   async createLead() {
@@ -224,6 +334,7 @@ export class AppComponent {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         fullName: this.leadForm.fullName,
+        company: this.leadForm.company || undefined,
         email: this.leadForm.email || undefined,
         linkedinUrl: this.leadForm.linkedinUrl || undefined,
         source: "web"
@@ -231,6 +342,7 @@ export class AppComponent {
     });
 
     this.leadForm.fullName = "";
+    this.leadForm.company = "";
     this.leadForm.email = "";
     this.leadForm.linkedinUrl = "";
     await this.refresh();

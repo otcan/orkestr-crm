@@ -1,6 +1,6 @@
-import { agents, eventTypes, flowSteps, flows, integrationAccounts } from "./schema/index.js";
+import { agents, eventTypes, flowSteps, flows } from "./schema/index.js";
 import { createDatabase } from "./client.js";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 const { db, queryClient } = createDatabase();
 
@@ -54,23 +54,6 @@ try {
       bufferAfterMinutes: 5,
       bookingWindowDays: 30
     });
-  }
-
-  for (const account of [
-    { provider: "salesnav" as const, displayName: "SalesNav Import", status: "needs_auth" as const },
-    { provider: "linkedin" as const, displayName: "LinkedIn Import", status: "needs_auth" as const },
-    { provider: "gmail" as const, displayName: "Gmail Import", status: "needs_auth" as const },
-    { provider: "google_calendar" as const, displayName: "Google Calendar", status: "needs_auth" as const }
-  ]) {
-    const existing = await db.query.integrationAccounts.findFirst({
-      where: and(
-        eq(integrationAccounts.provider, account.provider),
-        eq(integrationAccounts.displayName, account.displayName)
-      )
-    });
-    if (!existing) {
-      await db.insert(integrationAccounts).values(account);
-    }
   }
 
   console.log(

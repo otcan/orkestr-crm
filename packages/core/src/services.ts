@@ -12,8 +12,6 @@ import {
   externalIdentities,
   flowSteps,
   flows,
-  integrationAccounts,
-  integrationSyncRuns,
   leadRecords,
   leads,
   people,
@@ -804,7 +802,6 @@ export function createCrmServices({ db }: ServiceContext) {
             assignmentId: assignment.id,
             personId: person.id,
             companyId: company?.id,
-            integrationAccountId: activityInput.integrationAccountId,
             type: activityType,
             channel: activityChannel,
             direction: activityDirection,
@@ -1022,7 +1019,6 @@ export function createCrmServices({ db }: ServiceContext) {
             companyId: links.companyId,
             taskId: links.taskId,
             assignmentId: parsed.assignmentId,
-            integrationAccountId: parsed.integrationAccountId,
             type: parsed.type,
             channel: parsed.channel,
             direction: parsed.direction,
@@ -1169,71 +1165,6 @@ export function createCrmServices({ db }: ServiceContext) {
 
         return booking;
       });
-    },
-
-    async listIntegrationAccounts() {
-      return db.query.integrationAccounts.findMany({
-        orderBy: [desc(integrationAccounts.updatedAt)]
-      });
-    },
-
-    async upsertIntegrationAccount(input: unknown) {
-      const parsed = z.object({
-        provider: z.enum(["linkedin", "salesnav", "gmail", "outlook", "google_calendar", "microsoft_calendar", "caldav"]),
-        displayName: z.string().min(1),
-        status: z.enum(["active", "needs_auth", "paused", "error", "archived"]).default("needs_auth"),
-        authType: z.string().default("oauth"),
-        credentialsRef: z.string().optional()
-      }).parse(input);
-
-      const [created] = await db.insert(integrationAccounts).values(parsed).returning();
-      return created;
-    },
-
-    async testIntegrationAccount(id: string) {
-      const account = await db.query.integrationAccounts.findFirst({ where: eq(integrationAccounts.id, id) });
-      if (!account) {
-        throw new Error("integration_account_not_found");
-      }
-
-      return {
-        accountId: id,
-        provider: account.provider,
-        status: account.status === "archived" ? "failed" : "ok",
-        message: account.status === "needs_auth" ? "Credentials are not connected yet" : "Connector placeholder is reachable"
-      };
-    },
-
-    async syncIntegrationAccount(id: string) {
-      const account = await db.query.integrationAccounts.findFirst({ where: eq(integrationAccounts.id, id) });
-      if (!account) {
-        throw new Error("integration_account_not_found");
-      }
-
-      const [run] = await db
-        .insert(integrationSyncRuns)
-        .values({
-          integrationAccountId: id,
-          status: "succeeded",
-          finishedAt: new Date(),
-          resultJson: {
-            provider: account.provider,
-            mode: "placeholder",
-            message: "Connector sync boundary is implemented; provider-specific ingestion comes next."
-          }
-        })
-        .returning();
-
-      await db
-        .update(integrationAccounts)
-        .set({
-          lastSyncAt: new Date(),
-          lastError: null,
-          updatedAt: new Date()
-        })
-        .where(eq(integrationAccounts.id, id));
-
-      return run;
     },
 
     async getBackupHealth() {
