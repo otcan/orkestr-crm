@@ -1,8 +1,8 @@
-# CRM Instances
+# Docker Instances
 
 Instances are isolated with Docker project names, per-instance env files, separate host ports, and separate database volumes.
 
-Use `./ocrm` rather than hand-writing Docker commands. It does not require Node.js or pnpm on the host; CLI commands run inside the instance network.
+Use `./ocrm` rather than hand-writing Docker or `pnpm` commands. It does not require Node.js or pnpm on the host; CLI commands run inside the selected instance network.
 
 ## Demo Instance
 
@@ -12,22 +12,20 @@ Tracked public-safe example:
 instances/demo.env.example
 ```
 
-Local runtime env:
+Create the private runtime env:
 
 ```bash
 ./ocrm setup
 $EDITOR instances/demo.local.env
 ```
 
-Local demo ports:
+Print the URLs assigned to the Docker instance:
 
-- Web: `http://127.0.0.1:18290`
-- API health: `http://127.0.0.1:18291/api/health`
-- MCP health: `http://127.0.0.1:18292/health`
-- Postgres: `127.0.0.1:18293`
-- Redis: `127.0.0.1:18294`
+```bash
+./ocrm urls
+```
 
-Commands:
+Common Docker instance commands:
 
 ```bash
 ./ocrm start

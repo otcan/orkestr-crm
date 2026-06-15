@@ -25,12 +25,12 @@ Use this checklist for publication readiness and each tagged release.
 
 ## Verification
 
-- [ ] `pnpm install --frozen-lockfile`
-- [ ] `pnpm typecheck`
-- [ ] `pnpm build`
 - [ ] `./ocrm ready`
 - [ ] `./ocrm demo`
 - [ ] `./ocrm test`
+- [ ] `./ocrm urls`
+- [ ] `./ocrm tools`
+- [ ] Contributor CI is green for `pnpm install --frozen-lockfile`, `pnpm typecheck`, `pnpm build`, migration generation, and Compose config.
 - [ ] Backup verification is green for any production-bound instance.
 
 ## Release Notes

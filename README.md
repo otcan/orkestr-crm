@@ -23,9 +23,14 @@ The project is deliberately not a generic CRM or an outreach automation bot. The
 - Containerized runtime
 - GitHub-backed backup worker
 
-## Docker-Only Setup
+## Docker-First Quickstart
 
-Runtime operations require Docker. Node.js and pnpm are only needed for contributors who want to run workspace scripts directly on the host.
+Run the product through Docker. You do not need Node.js or pnpm on the host for normal installation, demo usage, CLI usage, or multi-instance operation.
+
+Requirements:
+
+- Docker Engine
+- Docker Compose plugin, optional. If Compose is unavailable, `./ocrm` falls back to direct Docker containers.
 
 ```bash
 ./ocrm start
@@ -34,7 +39,9 @@ Runtime operations require Docker. Node.js and pnpm are only needed for contribu
 ./ocrm test
 ```
 
-Print instance URLs:
+`./ocrm` builds the app image, starts Postgres, Redis, API, MCP, web, worker, and scheduler containers, runs migrations, seeds baseline data, loads a public-safe demo, then runs smoke checks.
+
+Print the URLs assigned to the Docker instance:
 
 ```bash
 ./ocrm urls
@@ -49,43 +56,25 @@ Run CLI commands inside the Docker instance network:
 ./ocrm cli mcp:read crm://queue/today
 ```
 
-The demo instance binds to `127.0.0.1` by default:
+The default demo instance exposes services through Docker-managed host ports. Use `./ocrm urls` instead of hard-coding ports in scripts or documentation. Override host ports in `instances/<name>.env.example` before creating an instance, or in the private `instances/<name>.local.env` after setup.
 
-- Web app: `http://127.0.0.1:18290`
-- API health: `http://127.0.0.1:18291/api/health`
-- MCP HTTP health: `http://127.0.0.1:18292/health`
-- Postgres host port: `127.0.0.1:18293`
-- Redis host port: `127.0.0.1:18294`
+## Multiple Docker Instances
 
-Multiple instances are isolated by env file, Docker project name, host ports, and database volumes. Use `./ocrm new <name>`, assign unique host ports in `instances/<name>.env.example`, then run commands with `./ocrm -i <name> start`.
-
-## Host Development
+Multiple instances are isolated by env file, Docker project name, host ports, and database volumes.
 
 ```bash
-cp .env.example .env
-pnpm install
-pnpm build
-docker compose up --build
+./ocrm new client-a
+$EDITOR instances/client-a.local.env
+./ocrm -i client-a start
+./ocrm -i client-a ready
+./ocrm -i client-a urls
 ```
 
-The default development compose file binds to `127.0.0.1`:
-
-- Web app: `http://127.0.0.1:18180`
-- API health: `http://127.0.0.1:18181/api/health`
-- MCP HTTP health: `http://127.0.0.1:18182/health`
-- Postgres host port: `127.0.0.1:18183`
-- Redis host port: `127.0.0.1:18184`
-
-Override ports with `WEB_PORT`, `API_PORT`, `MCP_PORT`, `HOST_WEB_PORT`, `HOST_API_PORT`, `HOST_MCP_PORT`, `HOST_POSTGRES_PORT`, and `HOST_REDIS_PORT`.
-
-## Development
-
-Operational commands are routed through `scripts/crm`. Use `pnpm ops help` for the full command surface; the root `pnpm` shortcuts below delegate there.
+Each instance runs its CLI inside that instance's Docker network:
 
 ```bash
-pnpm dev:api
-pnpm dev:mcp
-pnpm dev:web
+./ocrm -i client-a cli health
+./ocrm -i client-a cli event:list --limit 20
 ```
 
 ## Public-Safe Demo
@@ -99,9 +88,11 @@ The demo path uses only synthetic records and `.invalid` URLs.
 ./ocrm test
 ```
 
-Use `./ocrm urls` to print the local URLs. Keep `instances/*.local.env` private; they may contain credentials and backup targets.
+Use `./ocrm urls` to print the Docker instance URLs. Keep `instances/*.local.env` private; they may contain credentials and backup targets.
 
 ## CLI And MCP Testing
+
+Use the Dockerized CLI:
 
 ```bash
 ./ocrm cli health
@@ -111,10 +102,7 @@ Use `./ocrm urls` to print the local URLs. Keep `instances/*.local.env` private;
 ./ocrm smoke
 ```
 
-Host-side CLI development still supports:
-
-- `CRM_API_URL`, default `http://127.0.0.1:18181`
-- `CRM_MCP_URL`, default `http://127.0.0.1:18182/mcp`
+Host-side CLI development is contributor-only. For normal use, run `./ocrm cli ...` so the CLI resolves API and MCP services inside the Docker network.
 
 ## Data Model
 
@@ -187,6 +175,20 @@ curl -X POST "$CRM_API_URL/api/outreach-events" \
 
 `seed` creates baseline product configuration. `demo-seed` adds public-safe synthetic demo records.
 
+## Contributor Development
+
+Normal users should use `./ocrm`. Contributors who are changing TypeScript code can run workspace commands directly on the host:
+
+```bash
+corepack enable
+pnpm install --frozen-lockfile
+pnpm typecheck
+pnpm build
+pnpm db:generate
+```
+
+For host-side dev services, use `scripts/crm dev <service>`. Runtime validation should still go through Docker with `./ocrm test`.
+
 ## Documentation
 
 - [Architecture](docs/architecture.md)
@@ -220,4 +222,4 @@ MCP tools expose branch creation, branch summary, and PR body preparation. Openi
 
 ## Production Exposure
 
-Default development ports are bound to `127.0.0.1`. For production, use the Caddy reverse proxy profile in `infra/compose/docker-compose.prod.yml` and expose only the proxy through the host firewall.
+Default Docker development ports are loopback-only. For production, use the Caddy reverse proxy profile in `infra/compose/docker-compose.prod.yml` and expose only the proxy through the host firewall.
