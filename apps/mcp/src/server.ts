@@ -151,6 +151,115 @@ export async function buildMcpHttpServer() {
     );
 
     server.tool(
+      "crm.list_views",
+      "List saved CRM views. Saved views are the MCP-first bridge toward dynamic xRM views.",
+      {
+        objectType: z.enum(["lead", "person", "company", "task", "event"]).optional(),
+        limit: z.number().int().min(1).max(100).optional()
+      },
+      async (input) => toContent(await tools.services.listViews(input))
+    );
+
+    server.tool(
+      "crm.get_view",
+      "Read one saved view definition by view ID or key.",
+      {
+        viewId: z.string().optional(),
+        key: z.string().optional()
+      },
+      async (input) => toContent(await tools.services.getView(input))
+    );
+
+    server.tool(
+      "crm.create_view",
+      "Create a saved view over an existing CRM object type.",
+      {
+        key: z.string().min(2).max(96).regex(/^[a-z][a-z0-9_.-]*$/),
+        name: z.string().min(1),
+        description: z.string().optional(),
+        objectType: z.enum(["lead", "person", "company", "task", "event"]),
+        layout: z.enum(["table", "cards", "timeline"]).default("table"),
+        columns: z.array(z.string().min(1)).default([]),
+        filters: z
+          .array(
+            z.object({
+              field: z.string().min(1),
+              operator: z.enum(["equals", "contains", "starts_with", "is_empty", "is_not_empty", "before", "after"]).default("contains"),
+              value: z.unknown().optional()
+            })
+          )
+          .default([]),
+        sort: z
+          .array(
+            z.object({
+              field: z.string().min(1),
+              direction: z.enum(["asc", "desc"]).default("asc")
+            })
+          )
+          .default([]),
+        isDefault: z.boolean().default(false),
+        createdByAgentId: z.string().uuid().optional()
+      },
+      async (input) => toContent(await tools.services.createView(input))
+    );
+
+    server.tool(
+      "crm.update_view",
+      "Update a saved view definition by view ID or key.",
+      {
+        viewId: z.string().optional(),
+        key: z.string().optional(),
+        patch: z.object({
+          name: z.string().min(1).optional(),
+          description: z.string().optional(),
+          objectType: z.enum(["lead", "person", "company", "task", "event"]).optional(),
+          layout: z.enum(["table", "cards", "timeline"]).optional(),
+          columns: z.array(z.string().min(1)).optional(),
+          filters: z
+            .array(
+              z.object({
+                field: z.string().min(1),
+                operator: z.enum(["equals", "contains", "starts_with", "is_empty", "is_not_empty", "before", "after"]).default("contains"),
+                value: z.unknown().optional()
+              })
+            )
+            .optional(),
+          sort: z
+            .array(
+              z.object({
+                field: z.string().min(1),
+                direction: z.enum(["asc", "desc"]).default("asc")
+              })
+            )
+            .optional(),
+          isDefault: z.boolean().optional()
+        })
+      },
+      async (input) => toContent(await tools.services.updateView(input))
+    );
+
+    server.tool(
+      "crm.run_view",
+      "Execute a saved view and return matching rows.",
+      {
+        viewId: z.string().optional(),
+        key: z.string().optional(),
+        limit: z.number().int().min(1).max(500).optional()
+      },
+      async (input) => toContent(await tools.services.runView(input))
+    );
+
+    server.tool(
+      "crm.delete_view",
+      "Delete a saved view definition by view ID or key.",
+      {
+        viewId: z.string().optional(),
+        key: z.string().optional()
+      },
+      async (input) => toContent(await tools.services.deleteView(input))
+    );
+
+    server.tool(
       "crm.get_lead",
       "Read one lead with assignments, activities, and bookings.",
       {

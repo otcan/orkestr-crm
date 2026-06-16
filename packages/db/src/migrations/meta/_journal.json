@@ -22,6 +22,13 @@
       "when": 1781546000000,
       "tag": "0002_identity_tasks",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1781596996618,
+      "tag": "0003_cheerful_black_crow",
+      "breakpoints": true
     }
   ]
 }

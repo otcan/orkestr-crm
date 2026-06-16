@@ -391,6 +391,28 @@ export const taskEvents = pgTable(
   (table) => [index("task_events_task_time_idx").on(table.taskId, table.createdAt)]
 );
 
+export const viewDefinitions = pgTable(
+  "view_definitions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    key: text("key").notNull(),
+    name: text("name").notNull(),
+    description: text("description"),
+    objectType: text("object_type").notNull(),
+    layout: text("layout").notNull().default("table"),
+    columns: jsonb("columns").notNull().default(sql`'[]'::jsonb`),
+    filters: jsonb("filters").notNull().default(sql`'[]'::jsonb`),
+    sort: jsonb("sort").notNull().default(sql`'[]'::jsonb`),
+    isDefault: boolean("is_default").notNull().default(false),
+    createdByAgentId: uuid("created_by_agent_id").references(() => agents.id),
+    ...timestamps
+  },
+  (table) => [
+    uniqueIndex("view_definitions_key_unique").on(table.key),
+    index("view_definitions_object_type_idx").on(table.objectType)
+  ]
+);
+
 export const integrationAccounts = pgTable(
   "integration_accounts",
   {
@@ -635,6 +657,10 @@ export const taskEventRelations = relations(taskEvents, ({ one }) => ({
   task: one(tasks, { fields: [taskEvents.taskId], references: [tasks.id] })
 }));
 
+export const viewDefinitionRelations = relations(viewDefinitions, ({ one }) => ({
+  createdByAgent: one(agents, { fields: [viewDefinitions.createdByAgentId], references: [agents.id] })
+}));
+
 export type Company = typeof companies.$inferSelect;
 export type NewCompany = typeof companies.$inferInsert;
 export type Person = typeof people.$inferSelect;
@@ -651,4 +677,6 @@ export type Activity = typeof activities.$inferSelect;
 export type NewActivity = typeof activities.$inferInsert;
 export type Task = typeof tasks.$inferSelect;
 export type NewTask = typeof tasks.$inferInsert;
+export type ViewDefinition = typeof viewDefinitions.$inferSelect;
+export type NewViewDefinition = typeof viewDefinitions.$inferInsert;
 export type IntegrationSyncRun = typeof integrationSyncRuns.$inferSelect;

@@ -1,4 +1,4 @@
-import { agents, eventTypes, flowSteps, flows } from "./schema/index.js";
+import { agents, eventTypes, flowSteps, flows, viewDefinitions } from "./schema/index.js";
 import { createDatabase } from "./client.js";
 import { eq } from "drizzle-orm";
 
@@ -56,12 +56,83 @@ try {
     });
   }
 
+  const defaultViews = [
+    {
+      key: "lead.all",
+      name: "All Leads",
+      description: "Recent leads with core identity and source fields.",
+      objectType: "lead",
+      layout: "table",
+      columns: ["fullName", "company", "email", "source", "updatedAt"],
+      filters: [],
+      sort: [{ field: "updatedAt", direction: "desc" }],
+      isDefault: true
+    },
+    {
+      key: "person.all",
+      name: "All People",
+      description: "Normalized people/contact records.",
+      objectType: "person",
+      layout: "table",
+      columns: ["fullName", "title", "location", "source", "updatedAt"],
+      filters: [],
+      sort: [{ field: "updatedAt", direction: "desc" }],
+      isDefault: true
+    },
+    {
+      key: "company.all",
+      name: "All Companies",
+      description: "Normalized company and domain records.",
+      objectType: "company",
+      layout: "table",
+      columns: ["name", "primaryDomain", "industry", "source", "updatedAt"],
+      filters: [],
+      sort: [{ field: "updatedAt", direction: "desc" }],
+      isDefault: true
+    },
+    {
+      key: "task.open",
+      name: "Open Tasks",
+      description: "Open work items ordered by priority and due date.",
+      objectType: "task",
+      layout: "table",
+      columns: ["title", "status", "type", "priority", "dueAt"],
+      filters: [{ field: "status", operator: "equals", value: "open" }],
+      sort: [
+        { field: "priority", direction: "desc" },
+        { field: "dueAt", direction: "asc" }
+      ],
+      isDefault: true
+    },
+    {
+      key: "event.recent",
+      name: "Recent Events",
+      description: "Recent timeline events across records.",
+      objectType: "event",
+      layout: "timeline",
+      columns: ["type", "channel", "direction", "lead.fullName", "occurredAt"],
+      filters: [],
+      sort: [{ field: "occurredAt", direction: "desc" }],
+      isDefault: true
+    }
+  ];
+
+  let createdViews = 0;
+  for (const view of defaultViews) {
+    const existing = await db.query.viewDefinitions.findFirst({ where: eq(viewDefinitions.key, view.key) });
+    if (!existing) {
+      await db.insert(viewDefinitions).values(view);
+      createdViews += 1;
+    }
+  }
+
   console.log(
     JSON.stringify(
       {
         status: "ok",
         agentId: agent?.id ?? null,
-        flowId: persistedFlow?.id ?? null
+        flowId: persistedFlow?.id ?? null,
+        createdViews
       },
       null,
       2

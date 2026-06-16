@@ -17,6 +17,7 @@ import {
   people,
   taskEvents,
   tasks,
+  viewDefinitions,
   type Database
 } from "@orkestr-crm/db";
 import {
@@ -40,6 +41,96 @@ type Tx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 type LeadInput = z.infer<typeof createLeadSchema>;
 type ActivityInput = z.infer<typeof createActivitySchema>;
 
+const viewObjectTypeSchema = z.enum(["lead", "person", "company", "task", "event"]);
+const viewLayoutSchema = z.enum(["table", "cards", "timeline"]);
+const viewOperatorSchema = z.enum(["equals", "contains", "starts_with", "is_empty", "is_not_empty", "before", "after"]);
+const viewDirectionSchema = z.enum(["asc", "desc"]);
+
+const viewFilterSchema = z.object({
+  field: z.string().min(1),
+  operator: viewOperatorSchema.default("contains"),
+  value: z.unknown().optional()
+});
+
+const viewSortSchema = z.object({
+  field: z.string().min(1),
+  direction: viewDirectionSchema.default("asc")
+});
+
+const viewDefinitionInputSchema = z.object({
+  key: z
+    .string()
+    .min(2)
+    .max(96)
+    .regex(/^[a-z][a-z0-9_.-]*$/),
+  name: z.string().min(1),
+  description: z.string().optional(),
+  objectType: viewObjectTypeSchema,
+  layout: viewLayoutSchema.default("table"),
+  columns: z.array(z.string().min(1)).default([]),
+  filters: z.array(viewFilterSchema).default([]),
+  sort: z.array(viewSortSchema).default([]),
+  isDefault: z.boolean().default(false),
+  createdByAgentId: z.string().uuid().optional()
+});
+
+const viewDefinitionUpdateSchema = viewDefinitionInputSchema
+  .omit({ key: true, createdByAgentId: true })
+  .partial();
+
+const viewRunInputSchema = z.object({
+  viewId: z.string().optional(),
+  key: z.string().optional(),
+  limit: z.number().int().min(1).max(500).optional()
+});
+
+type ViewObjectType = z.infer<typeof viewObjectTypeSchema>;
+type ViewFilter = z.infer<typeof viewFilterSchema>;
+type ViewSort = z.infer<typeof viewSortSchema>;
+
+const viewFields: Record<ViewObjectType, string[]> = {
+  lead: [
+    "id",
+    "fullName",
+    "company",
+    "title",
+    "linkedinUrl",
+    "salesnavUrl",
+    "email",
+    "phone",
+    "location",
+    "source",
+    "notes",
+    "createdAt",
+    "updatedAt"
+  ],
+  person: ["id", "fullName", "title", "location", "source", "createdAt", "updatedAt"],
+  company: ["id", "name", "website", "primaryDomain", "industry", "size", "location", "source", "createdAt", "updatedAt"],
+  task: ["id", "title", "description", "type", "status", "priority", "dueAt", "lead.fullName", "createdAt", "updatedAt"],
+  event: [
+    "id",
+    "type",
+    "channel",
+    "direction",
+    "subject",
+    "body",
+    "lead.fullName",
+    "task.title",
+    "occurredAt",
+    "createdAt"
+  ]
+};
+
+const defaultViewColumns: Record<ViewObjectType, string[]> = {
+  lead: ["fullName", "company", "email", "source", "updatedAt"],
+  person: ["fullName", "title", "location", "source", "updatedAt"],
+  company: ["name", "primaryDomain", "industry", "source", "updatedAt"],
+  task: ["title", "status", "type", "priority", "dueAt"],
+  event: ["type", "channel", "direction", "lead.fullName", "occurredAt"]
+};
+
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 function compactText(value: string | undefined) {
   const compacted = value?.trim().replace(/\s+/g, " ");
   return compacted || undefined;
@@ -57,6 +148,156 @@ function emailDomain(email: string | undefined) {
   const normalized = normalizeEmail(email);
   const at = normalized?.lastIndexOf("@") ?? -1;
   return at > 0 ? normalized?.slice(at + 1) : undefined;
+}
+
+function normalizeViewConfig(input: z.infer<typeof viewDefinitionInputSchema>) {
+  const columns = input.columns.length > 0 ? input.columns : defaultViewColumns[input.objectType];
+  validateViewFields(input.objectType, columns);
+  validateViewFields(
+    input.objectType,
+    input.filters.map((filter) => filter.field)
+  );
+  validateViewFields(
+    input.objectType,
+    input.sort.map((sort) => sort.field)
+  );
+
+  return {
+    ...input,
+    columns
+  };
+}
+
+function normalizeViewPatch(existingObjectType: ViewObjectType, input: z.infer<typeof viewDefinitionUpdateSchema>) {
+  const objectType = input.objectType ?? existingObjectType;
+  if (input.columns) {
+    validateViewFields(objectType, input.columns);
+  }
+  if (input.filters) {
+    validateViewFields(
+      objectType,
+      input.filters.map((filter) => filter.field)
+    );
+  }
+  if (input.sort) {
+    validateViewFields(
+      objectType,
+      input.sort.map((entry) => entry.field)
+    );
+  }
+
+  return {
+    ...input,
+    objectType
+  };
+}
+
+function validateViewFields(objectType: ViewObjectType, fields: string[]) {
+  const allowed = new Set(viewFields[objectType]);
+  const invalid = fields.filter((field) => !allowed.has(field));
+  if (invalid.length > 0) {
+    throw new Error(`invalid_view_fields:${invalid.join(",")}`);
+  }
+}
+
+function parseViewFilters(value: unknown, objectType: ViewObjectType) {
+  const filters = z.array(viewFilterSchema).parse(value ?? []);
+  validateViewFields(
+    objectType,
+    filters.map((filter) => filter.field)
+  );
+  return filters;
+}
+
+function parseViewSort(value: unknown, objectType: ViewObjectType) {
+  const sort = z.array(viewSortSchema).parse(value ?? []);
+  validateViewFields(
+    objectType,
+    sort.map((entry) => entry.field)
+  );
+  return sort;
+}
+
+function parseViewColumns(value: unknown, objectType: ViewObjectType) {
+  const columns = z.array(z.string().min(1)).parse(value ?? []);
+  const resolved = columns.length > 0 ? columns : defaultViewColumns[objectType];
+  validateViewFields(objectType, resolved);
+  return resolved;
+}
+
+function getRecordValue(record: unknown, path: string): unknown {
+  return path.split(".").reduce<unknown>((current, segment) => {
+    if (!current || typeof current !== "object") {
+      return undefined;
+    }
+    return (current as Record<string, unknown>)[segment];
+  }, record);
+}
+
+function compareValues(left: unknown, right: unknown) {
+  const leftValue = left instanceof Date ? left.getTime() : left;
+  const rightValue = right instanceof Date ? right.getTime() : right;
+  if (leftValue === rightValue) {
+    return 0;
+  }
+  if (leftValue === undefined || leftValue === null) {
+    return -1;
+  }
+  if (rightValue === undefined || rightValue === null) {
+    return 1;
+  }
+  return String(leftValue).localeCompare(String(rightValue), undefined, { numeric: true, sensitivity: "base" });
+}
+
+function matchesViewFilter(record: unknown, filter: ViewFilter) {
+  const value = getRecordValue(record, filter.field);
+  const text = value === undefined || value === null ? "" : String(value).toLowerCase();
+  const expected = filter.value === undefined || filter.value === null ? "" : String(filter.value).toLowerCase();
+
+  switch (filter.operator) {
+    case "equals":
+      return text === expected;
+    case "contains":
+      return text.includes(expected);
+    case "starts_with":
+      return text.startsWith(expected);
+    case "is_empty":
+      return text.length === 0;
+    case "is_not_empty":
+      return text.length > 0;
+    case "before":
+      return dateValue(value) < dateValue(filter.value);
+    case "after":
+      return dateValue(value) > dateValue(filter.value);
+  }
+}
+
+function dateValue(value: unknown) {
+  if (value instanceof Date) {
+    return value.getTime();
+  }
+  if (typeof value === "string" || typeof value === "number") {
+    return new Date(value).getTime();
+  }
+  return Number.NaN;
+}
+
+function runViewPipeline<T>(rows: T[], filters: ViewFilter[], sort: ViewSort[], limit: number) {
+  const filtered = rows.filter((row) => filters.every((filter) => matchesViewFilter(row, filter)));
+  const sorted = [...filtered].sort((left, right) => {
+    for (const entry of sort) {
+      const comparison = compareValues(getRecordValue(left, entry.field), getRecordValue(right, entry.field));
+      if (comparison !== 0) {
+        return entry.direction === "desc" ? -comparison : comparison;
+      }
+    }
+    return 0;
+  });
+
+  return {
+    total: filtered.length,
+    rows: sorted.slice(0, limit)
+  };
 }
 
 function normalizeDomain(value: string | undefined) {
@@ -1101,6 +1342,138 @@ export function createCrmServices({ db }: ServiceContext) {
         tasks: taskResults,
         events: eventResults
       };
+    },
+
+    async listViews(input: { objectType?: string | undefined; limit?: number | undefined } = {}) {
+      const parsedObjectType = input.objectType ? viewObjectTypeSchema.parse(input.objectType) : undefined;
+      return db.query.viewDefinitions.findMany({
+        where: parsedObjectType ? eq(viewDefinitions.objectType, parsedObjectType) : undefined,
+        with: { createdByAgent: true },
+        orderBy: [desc(viewDefinitions.isDefault), desc(viewDefinitions.updatedAt)],
+        limit: input.limit ?? 100
+      });
+    },
+
+    async getView(input: { viewId?: string | undefined; key?: string | undefined }) {
+      if (!input.viewId && !input.key) {
+        throw new Error("view_identifier_required");
+      }
+
+      return db.query.viewDefinitions.findFirst({
+        where:
+          input.viewId && uuidPattern.test(input.viewId)
+            ? eq(viewDefinitions.id, input.viewId)
+            : eq(viewDefinitions.key, input.key ?? input.viewId ?? ""),
+        with: { createdByAgent: true }
+      });
+    },
+
+    async createView(input: unknown) {
+      const parsed = normalizeViewConfig(viewDefinitionInputSchema.parse(input));
+      const [created] = await db
+        .insert(viewDefinitions)
+        .values({
+          key: parsed.key,
+          name: parsed.name,
+          description: parsed.description,
+          objectType: parsed.objectType,
+          layout: parsed.layout,
+          columns: parsed.columns,
+          filters: parsed.filters,
+          sort: parsed.sort,
+          isDefault: parsed.isDefault,
+          createdByAgentId: parsed.createdByAgentId
+        })
+        .returning();
+      return created;
+    },
+
+    async updateView(input: { viewId?: string | undefined; key?: string | undefined; patch: unknown }) {
+      const existing = await this.getView(input);
+      if (!existing) {
+        return undefined;
+      }
+
+      const parsed = normalizeViewPatch(viewObjectTypeSchema.parse(existing.objectType), viewDefinitionUpdateSchema.parse(input.patch));
+      const [updated] = await db
+        .update(viewDefinitions)
+        .set({
+          name: parsed.name,
+          description: parsed.description,
+          objectType: parsed.objectType,
+          layout: parsed.layout,
+          columns: parsed.columns,
+          filters: parsed.filters,
+          sort: parsed.sort,
+          isDefault: parsed.isDefault,
+          updatedAt: new Date()
+        })
+        .where(eq(viewDefinitions.id, existing.id))
+        .returning();
+      return updated;
+    },
+
+    async deleteView(input: { viewId?: string | undefined; key?: string | undefined }) {
+      const existing = await this.getView(input);
+      if (!existing) {
+        return { deleted: false, viewId: input.viewId ?? null, key: input.key ?? null };
+      }
+
+      const deleted = await db.delete(viewDefinitions).where(eq(viewDefinitions.id, existing.id)).returning({ id: viewDefinitions.id });
+      return {
+        deleted: deleted.length > 0,
+        viewId: existing.id,
+        key: existing.key
+      };
+    },
+
+    async runView(input: unknown) {
+      const parsed = viewRunInputSchema.parse(input);
+      const view = await this.getView(parsed);
+      if (!view) {
+        throw new Error("view_not_found");
+      }
+
+      const objectType = viewObjectTypeSchema.parse(view.objectType);
+      const columns = parseViewColumns(view.columns, objectType);
+      const filters = parseViewFilters(view.filters, objectType);
+      const sort = parseViewSort(view.sort, objectType);
+      const limit = parsed.limit ?? 100;
+      const sourceLimit = Math.max(limit, 500);
+      const rows: unknown[] = await this.getViewRows(objectType, sourceLimit);
+      const result = runViewPipeline(rows, filters, sort, limit);
+
+      return {
+        view: {
+          id: view.id,
+          key: view.key,
+          name: view.name,
+          objectType,
+          layout: view.layout,
+          columns,
+          filters,
+          sort,
+          isDefault: view.isDefault
+        },
+        total: result.total,
+        returned: result.rows.length,
+        rows: result.rows
+      };
+    },
+
+    async getViewRows(objectType: ViewObjectType, limit = 500) {
+      switch (objectType) {
+        case "lead":
+          return this.listLeads({ limit });
+        case "person":
+          return this.listPeople({ limit });
+        case "company":
+          return this.listCompanies({ limit });
+        case "task":
+          return this.listTasks({ limit });
+        case "event":
+          return this.listActivities({ limit });
+      }
     },
 
     async logActivity(input: unknown) {
