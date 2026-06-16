@@ -1,0 +1,217 @@
+<main class="shell">
+  <aside class="sidebar" aria-label="Primary">
+    <div class="brand">
+      <span class="brand-mark">OC</span>
+      <div>
+        <strong>Orkestr CRM</strong>
+        <small>Docker CRM ledger</small>
+      </div>
+    </div>
+
+    <nav>
+      @for (item of navItems; track item) {
+        <button type="button" [class.active]="item === selectedNav()" (click)="selectNav(item)">
+          {{ item }}
+        </button>
+      }
+    </nav>
+  </aside>
+
+  <section class="workspace">
+    <div class="workspace-grid">
+      <div class="workspace-main">
+        <header class="topbar">
+          <div>
+            <h1>{{ selectedNav() }}</h1>
+            <p>{{ subtitle() }}</p>
+          </div>
+          <button type="button" class="status-pill" [class.warn]="backupHealth() !== 'ok'" (click)="refresh()">
+            Backup {{ backupHealth() }}
+          </button>
+        </header>
+
+        @switch (selectedNav()) {
+          @case ("Dashboard") {
+            <section class="metrics" aria-label="CRM metrics">
+              @for (metric of metrics(); track metric.label) {
+                <article class="metric" [class.good]="metric.tone === 'good'" [class.warn]="metric.tone === 'warn'">
+                  <span>{{ metric.label }}</span>
+                  <strong>{{ metric.value }}</strong>
+                </article>
+              }
+            </section>
+
+            <section class="panels">
+              <article class="panel">
+                <header>
+                  <h2>Due Tasks</h2>
+                  <button type="button" (click)="refresh()">Sync</button>
+                </header>
+                <div class="queue">
+                  @for (task of queue(); track task.id) {
+                    <button type="button" class="queue-row action-row" [class.selected]="isSelected('task', task.id)" (click)="selectTask(task)">
+                      <div>
+                        <strong>{{ task.title }}</strong>
+                        <span>{{ task.lead?.fullName || task.type }} · {{ task.status }}</span>
+                      </div>
+                      <time>{{ task.dueAt ? (task.dueAt | date:'short') : 'No due date' }}</time>
+                    </button>
+                  } @empty {
+                    <div class="empty">No due work.</div>
+                  }
+                </div>
+              </article>
+
+              <article class="panel">
+                <header>
+                  <h2>Recent Events</h2>
+                  <button type="button" (click)="selectNav('Events')">Open</button>
+                </header>
+                <div class="queue">
+                  @for (event of events().slice(0, 5); track event.id) {
+                    <button type="button" class="queue-row action-row" [class.selected]="isSelected('event', event.id)" (click)="selectEvent(event)">
+                      <div>
+                        <strong>{{ event.subject || event.type }}</strong>
+                        <span>{{ event.channel }} · {{ event.direction }}</span>
+                      </div>
+                      <time>{{ event.occurredAt | date:'short' }}</time>
+                    </button>
+                  } @empty {
+                    <div class="empty">No events recorded.</div>
+                  }
+                </div>
+              </article>
+            </section>
+          }
+
+          @case ("Leads") {
+            <section class="panels">
+              <article class="panel">
+                <header>
+                  <h2>Create Lead</h2>
+                  <button type="button" (click)="createLead()">Save</button>
+                </header>
+                <div class="form-grid">
+                  <label>Name<input [(ngModel)]="leadForm.fullName" name="fullName"></label>
+                  <label>Company<input [(ngModel)]="leadForm.company" name="company"></label>
+                  <label>Email<input [(ngModel)]="leadForm.email" name="email"></label>
+                  <label>LinkedIn URL<input [(ngModel)]="leadForm.linkedinUrl" name="linkedinUrl"></label>
+                </div>
+              </article>
+
+              <article class="panel">
+                <header>
+                  <h2>Recent Leads</h2>
+                  <button type="button" (click)="refresh()">Refresh</button>
+                </header>
+                <div class="queue">
+                  @for (lead of leads(); track lead.id) {
+                    <button type="button" class="queue-row action-row" [class.selected]="isSelected('lead', lead.id)" (click)="selectLead(lead)">
+                      <div>
+                        <strong>{{ lead.fullName }}</strong>
+                        <span>{{ lead.company || lead.email || lead.source || 'No details' }}</span>
+                      </div>
+                      <time>{{ lead.updatedAt | date:'short' }}</time>
+                    </button>
+                  } @empty {
+                    <div class="empty">No leads yet.</div>
+                  }
+                </div>
+              </article>
+            </section>
+          }
+
+          @case ("Tasks") {
+            <section class="panels single">
+              <article class="panel">
+                <header>
+                  <h2>Tasks</h2>
+                  <button type="button" (click)="refresh()">Refresh</button>
+                </header>
+                <div class="queue">
+                  @for (task of tasks(); track task.id) {
+                    <button type="button" class="queue-row action-row" [class.selected]="isSelected('task', task.id)" (click)="selectTask(task)">
+                      <div>
+                        <strong>{{ task.title }}</strong>
+                        <span>{{ task.type }} · {{ task.status }} · priority {{ task.priority }}</span>
+                      </div>
+                      <time>{{ task.dueAt ? (task.dueAt | date:'short') : 'No due date' }}</time>
+                    </button>
+                  } @empty {
+                    <div class="empty">No tasks.</div>
+                  }
+                </div>
+              </article>
+            </section>
+          }
+
+          @case ("Events") {
+            <section class="panels single">
+              <article class="panel">
+                <header>
+                  <h2>Event Timeline</h2>
+                  <button type="button" (click)="refresh()">Refresh</button>
+                </header>
+                <div class="queue">
+                  @for (event of events(); track event.id) {
+                    <button type="button" class="queue-row action-row event-row" [class.selected]="isSelected('event', event.id)" (click)="selectEvent(event)">
+                      <div>
+                        <strong>{{ event.subject || event.type }}</strong>
+                        <span>{{ event.channel }} · {{ event.direction }} · {{ event.lead?.fullName || 'unlinked' }}</span>
+                        @if (event.body) {
+                          <small>{{ event.body }}</small>
+                        }
+                      </div>
+                      <time>{{ event.occurredAt | date:'short' }}</time>
+                    </button>
+                  } @empty {
+                    <div class="empty">No events recorded.</div>
+                  }
+                </div>
+              </article>
+            </section>
+          }
+
+          @case ("Settings") {
+            <section class="panels single">
+              <article class="panel">
+                <header>
+                  <h2>System</h2>
+                  <button type="button" (click)="refresh()">Refresh</button>
+                </header>
+                <div class="queue">
+                  <div class="queue-row">
+                    <div>
+                      <strong>Backup</strong>
+                      <span>{{ backupHealth() }}</span>
+                    </div>
+                    <time>active</time>
+                  </div>
+                  <div class="queue-row">
+                    <div>
+                      <strong>Runtime</strong>
+                      <span>Docker instance; CLI and MCP run inside the instance network.</span>
+                    </div>
+                    <time>ocrm</time>
+                  </div>
+                </div>
+              </article>
+            </section>
+          }
+        }
+      </div>
+
+      <oc-detail-panel
+        [selection]="selectedDetail()"
+        [leadActivities]="leadActivities()"
+        [loading]="detailLoading()"
+        [saving]="saving()"
+        [error]="detailError()"
+        [saveError]="saveError()"
+        (close)="closeDetail()"
+        (saveLead)="saveLead($event)"
+        (saveTask)="saveTask($event)"
+      />
+    </div>
+  </section>
+</main>
