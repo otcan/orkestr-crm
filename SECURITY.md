@@ -2,7 +2,8 @@
 
 ## Supported Versions
 
-Security fixes target the current `master` branch until versioned releases are published.
+Security fixes target the current `main` branch and the latest published public
+preview release.
 
 ## Reporting A Vulnerability
 
@@ -18,4 +19,10 @@ Include:
 
 ## Data Handling Expectations
 
-Production CRM data is sensitive. Keep `.env`, `instances/*.local.env`, `.backups/`, database dumps, logs, screenshots, cookies, and connector tokens out of git and public issue trackers.
+Production relationship data is sensitive. Keep `.env`,
+`instances/*.local.env`, `.backups/`, database dumps, logs, screenshots,
+cookies, browser session state, backup repository names, and connector tokens
+out of git and public issue trackers.
+
+The public demo must use synthetic records, reserved domains, and no real
+LinkedIn, email, calendar, or Sales Navigator credentials.

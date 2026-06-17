@@ -24,8 +24,8 @@ export async function createAgentBranch(agentName: string, shortTask: string) {
 export async function summarizeBranchChanges() {
   const branch = await git(["branch", "--show-current"]);
   const status = await git(["status", "--short"]);
-  const diffStat = await git(["diff", "--stat", "origin/master...HEAD"]).catch(() => git(["diff", "--stat"]));
-  const commits = await git(["log", "--oneline", "origin/master..HEAD"]).catch(() => "");
+  const diffStat = await git(["diff", "--stat", "origin/main...HEAD"]).catch(() => git(["diff", "--stat"]));
+  const commits = await git(["log", "--oneline", "origin/main..HEAD"]).catch(() => "");
   return { branch, status, diffStat, commits };
 }
 

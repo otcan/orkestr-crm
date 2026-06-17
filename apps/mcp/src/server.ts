@@ -1107,7 +1107,7 @@ export async function buildMcpHttpServer() {
 
     server.tool(
       "crm.summarize_branch_changes",
-      "Summarize current branch status, commits, and diff stat against origin/master.",
+      "Summarize current branch status, commits, and diff stat against origin/main.",
       {},
       async () => toContent(await summarizeBranchChanges())
     );

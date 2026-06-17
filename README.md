@@ -1,5 +1,10 @@
 # oXRM
 
+[![CI](https://github.com/otcan/orkestr-crm/actions/workflows/ci.yml/badge.svg)](https://github.com/otcan/orkestr-crm/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node 22+](https://img.shields.io/badge/node-22%2B-339933.svg)](package.json)
+[![Docker](https://img.shields.io/badge/runtime-Docker-2496ED.svg)](docker-compose.yml)
+
 oXRM is an MCP-first relationship workspace for people who use agents to manage
 follow-ups, outreach, job search, partnerships, investors, and warm leads.
 
@@ -20,6 +25,8 @@ name, but operator-facing commands and docs now use `oxrm`.
 LinkedIn operation mechanics live in the separate `otcan/ork-linkedin` repo.
 oXRM integrates with it only through MCP/API contracts; see
 [docs/ork-linkedin-integration.md](docs/ork-linkedin-integration.md).
+
+![oXRM dashboard with synthetic demo data](docs/assets/oxrm-dashboard.png)
 
 ## How Orkestr And oXRM Fit Together
 
@@ -42,6 +49,13 @@ agents need relationship state.
 - Keeps connector boundaries explicit for LinkedIn, Sales Navigator, email, calendar, and future CRM syncs.
 - Ships a public-safe synthetic demo seed and smoke path.
 - Treats backups, approval boundaries, and auditability as product requirements.
+
+## Why This Exists
+
+Agents need structured relationship state. Spreadsheets are too loose, and
+classic CRMs are usually sales-team-first. oXRM gives humans and agents a shared
+relationship memory with queues, saved views, timeline events, safe write paths,
+and MCP resources that can be inspected and audited.
 
 ## Stack
 
@@ -89,7 +103,13 @@ custom/manual setups and is not the first-run path.
 
 `./ocrm` is a deprecated compatibility wrapper around `./oxrm`. New automation should call `./oxrm`.
 
-Use `./oxrm -i <instance> upgrade` for repeatable instance updates. It backs up, verifies the backup, stops app writers, builds the image, runs migrations once, runs idempotent seed, restarts services, and smoke-tests the instance. For disposable local instances without backup credentials, pass `--skip-backup`; do not skip backups for production-bound instances.
+Use `./oxrm -i <instance> upgrade` for repeatable instance updates. It runs the
+configured backup path, verifies that the latest backup artifact is present and
+readable, stops app writers, builds the image, runs migrations once, runs
+idempotent seed, restarts services, and smoke-tests the instance. Full isolated
+`pg_restore` replay is still planned hardening. For disposable local instances
+without backup credentials, pass `--skip-backup`; do not skip backups for
+production-bound instances.
 
 Print the URLs assigned to the Docker instance:
 
@@ -155,6 +175,18 @@ Use `./oxrm urls` to print the Docker instance URLs. Keep `instances/*.local.env
 oXRM is not a LinkedIn scraper, spam tool, mass outreach bot,
 Salesforce/HubSpot clone, production-ready multi-tenant SaaS, or replacement
 for human approval.
+
+## Demo Scenario
+
+The canonical demo is a founder/operator relationship queue:
+
+1. Start the stack and seed synthetic outreach plus job-search data.
+2. Open the dashboard and inspect due work.
+3. Open Leads and review synthetic people/companies.
+4. Read today's queue through MCP.
+5. Record or inspect a timeline event with an idempotency key.
+
+Detailed script: [docs/demo-script.md](docs/demo-script.md).
 
 ## CLI And MCP Testing
 
@@ -283,6 +315,7 @@ For host-side dev services, use `scripts/crm dev <service>`. Runtime validation 
 - [Instance operations](docs/instances.md)
 - [Public repo export](docs/public-repo-export.md)
 - [Release checklist](docs/public-release.md)
+- [Roadmap](ROADMAP.md)
 
 ## Backups
 
@@ -294,6 +327,8 @@ Production must configure `BACKUP_GITHUB_REPO` and `BACKUP_GITHUB_TOKEN`.
 ```
 
 The backup worker is part of the scaffold because backup enforcement is a product requirement, not an operational afterthought.
+Current verification checks the latest backup metadata/artifact path. Full
+isolated restore replay remains a hardening item and is tracked as future work.
 
 ## Agent Branch Workflow
 

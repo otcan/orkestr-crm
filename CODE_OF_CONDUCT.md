@@ -1,15 +1,26 @@
 # Code Of Conduct
 
-## Our Standard
+This project is public-facing infrastructure for agent-assisted relationship
+workflows. Keep discussion professional, specific, and safe for public issue
+trackers.
 
-Participants are expected to keep project spaces professional, technical, and respectful.
+## Expected Behavior
 
-Unacceptable behavior includes harassment, discriminatory language, personal attacks, publishing private information, or introducing real personal outreach data into public project spaces.
+- Use respectful, direct language.
+- Keep reports reproducible and scoped.
+- Use synthetic examples in public.
+- Respect the privacy of people represented in relationship data.
 
-## Enforcement
+## Unacceptable Behavior
 
-Maintainers may remove comments, issues, pull requests, or other contributions that violate this standard. Repeated or severe violations may result in a ban from project spaces.
+- Harassment, threats, or personal attacks.
+- Posting secrets, cookies, tokens, real leads, real message bodies, private
+  hostnames, dumps, or backup artifacts.
+- Encouraging spam, scraping, or unapproved mass outreach.
+- Pressuring maintainers to expose private deployment details.
 
-## Scope
+## Reporting
 
-This code of conduct applies to repository issues, pull requests, discussions, documentation, and project-operated communication channels.
+Use GitHub Security Advisories for private security reports when available.
+For ordinary conduct concerns, open a public-safe issue or contact a maintainer
+privately without including sensitive data.

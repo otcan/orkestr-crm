@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const OXRM_PRODUCT_NAME = "oXRM";
 export const OXRM_PRODUCT_SLUG = "oxrm";
-export const OXRM_PRODUCT_VERSION = "0.2.0";
+export const OXRM_PRODUCT_VERSION = "0.2.1";
 export const OXRM_COMPAT_COMMAND = "ocrm";
 
 export const assignmentStatusSchema = z.enum([

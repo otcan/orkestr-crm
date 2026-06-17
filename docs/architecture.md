@@ -233,7 +233,8 @@ Tool safety levels:
 - Read-only: safe by default.
 - Routine write: allowed for authenticated agents, always audited.
 - External side effect: requires approval, for example sending messages, creating calendar events, or triggering connector sync that writes externally.
-- System-level: requires approval, for example running backup, restore verification, migration, branch creation, or PR creation.
+- System-level: requires approval, for example running backup verification,
+  migration, branch creation, or PR creation.
 
 Agent audit fields:
 
@@ -740,7 +741,8 @@ Hard enforcement:
 - Health check is degraded if the latest successful backup is older than 26 hours.
 - Startup should fail in production if backup configuration is missing.
 - A manual `backup:run` command must exist.
-- A restore verification command must exist.
+- A latest-backup artifact verification command must exist.
+- Full isolated `pg_restore` replay remains planned hardening.
 
 Backup manifest:
 

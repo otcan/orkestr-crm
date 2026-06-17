@@ -56,7 +56,7 @@ Each release note should include:
 - security and privacy impact
 - upgrade steps
 
-## 0.2.0 Release Notes Draft
+## 0.2.1 Public Preview Release Notes
 
 ### User-Facing Changes
 
