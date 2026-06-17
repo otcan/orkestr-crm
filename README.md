@@ -17,6 +17,10 @@ through HTTP APIs, MCP tools, MCP resources, and saved views.
 The repository still has internal package scopes that use the older Orkestr CRM
 name, but operator-facing commands and docs now use `oxrm`.
 
+LinkedIn operation mechanics live in the separate `otcan/ork-linkedin` repo.
+oXRM integrates with it only through MCP/API contracts; see
+[docs/ork-linkedin-integration.md](docs/ork-linkedin-integration.md).
+
 ## How Orkestr And oXRM Fit Together
 
 Orkestr is the local-first workstation for persistent coding and operations

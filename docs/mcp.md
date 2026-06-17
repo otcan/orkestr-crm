@@ -99,6 +99,13 @@ the public demo.
 - Do not use public demo data as real personal data.
 - Do not automate LinkedIn scraping, spam, or mass outreach.
 
+## ork-linkedin Boundary
+
+LinkedIn browser/runtime mechanics live in `otcan/ork-linkedin`. oXRM remains
+the relationship ledger and exposes MCP/API write paths for verified events,
+blockers, approvals, tasks, and audit links. See
+[ork-linkedin Integration Boundary](ork-linkedin-integration.md).
+
 ## Useful Examples
 
 Search leads:
