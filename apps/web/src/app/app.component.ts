@@ -408,9 +408,26 @@ export class AppComponent {
   });
 
   readonly outreachTodayActions = computed<ProductActionItem[]>(() => {
-    const taskItems = this.visibleQueue().map((task) => this.taskActionItem(task));
+    const leadRecords = this.outreachLeadRecords();
+    const taskItems = this.visibleQueue().map((task) => {
+      const record = task.xrmRecordId ? leadRecords.find((candidate) => candidate.id === task.xrmRecordId) : undefined;
+      if (!record) {
+        return this.taskActionItem(task);
+      }
+      return {
+        kind: "task" as const,
+        id: task.id,
+        title: this.recordField(record, "nextAction", task.title.replace(/^Next action:\s*/i, "")),
+        context: `${this.recordField(record, "fullName", record.displayName)} at ${this.recordField(record, "company", "Unknown company")}`,
+        dueAt: (task.dueAt ?? this.recordField(record, "nextActionAt", "")) || null,
+        badge: this.recordField(record, "draftStatus", "") === "proposed" ? "Draft ready" : undefined,
+        sortDate: this.sortDate(task.dueAt ?? this.recordField(record, "nextActionAt", "")),
+        sortBucket: this.dueBucket(task.dueAt ?? this.recordField(record, "nextActionAt", ""))
+      };
+    });
+    const taskRecordIds = new Set(this.visibleQueue().map((task) => task.xrmRecordId).filter((id): id is string => Boolean(id)));
     const leadItems = this.outreachLeadRecords()
-      .filter((record) => this.recordField(record, "nextActionAt", "") !== "")
+      .filter((record) => this.recordField(record, "nextActionAt", "") !== "" && !taskRecordIds.has(record.id))
       .map((record) => {
         const dueAt = this.recordField(record, "nextActionAt", "");
         return {
