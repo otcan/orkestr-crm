@@ -1,9 +1,9 @@
-import { createCrmServices } from "@orkestr-crm/core";
-import { createDatabase } from "@orkestr-crm/db";
+import { createCrmServices } from "@oxrm/core";
+import { createDatabase } from "@oxrm/db";
 
-export function createCrmTools(databaseUrl: string) {
+export function createCrmTools(databaseUrl: string, options: { backupsRequired?: boolean | undefined } = {}) {
   const { db, queryClient } = createDatabase(databaseUrl);
-  const services = createCrmServices({ db });
+  const services = createCrmServices({ db, backupsRequired: options.backupsRequired });
 
   return {
     services,

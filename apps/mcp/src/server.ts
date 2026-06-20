@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { OXRM_PRODUCT_NAME, OXRM_PRODUCT_SLUG, OXRM_PRODUCT_VERSION } from "@orkestr-crm/shared";
+import { OXRM_PRODUCT_NAME, OXRM_PRODUCT_SLUG, OXRM_PRODUCT_VERSION, oxrmDeploymentInfoFromEnv } from "@oxrm/shared";
 import Fastify from "fastify";
 import { z } from "zod";
 import { loadConfig } from "./config.js";
@@ -72,9 +72,25 @@ const createViewSchema = {
   createdByAgentId: z.string().uuid().optional()
 };
 
+const serverInstructions = `
+oXRM is a local-first outreach workspace for high-context job search, customer
+outreach, partnerships, and founder-led sales.
+
+Use this MCP server to read queues, search records, inspect saved views, review
+timeline history, and record audited notes or tasks. Keep external actions
+draft-only unless a human explicitly approves them outside MCP. Do not send
+email, LinkedIn messages, CVs, applications, invitations, or any other external
+outreach from these tools.
+
+Compatibility names are intentional: crm.* tools, crm:// resources,
+CRM_API_URL, and CRM_MCP_URL remain stable for existing agents. Prefer XRM
+records, relationships, saved views, tasks, files, approvals, and events when
+working with job-search or customer-outreach scenarios.
+`.trim();
+
 export async function buildMcpHttpServer() {
   const config = loadConfig();
-  const tools = createCrmTools(config.databaseUrl);
+  const tools = createCrmTools(config.databaseUrl, { backupsRequired: config.backupsRequired });
   const app = Fastify({ logger: { level: config.logLevel } });
 
   app.addHook("onClose", async () => {
@@ -88,13 +104,16 @@ export async function buildMcpHttpServer() {
       name: OXRM_PRODUCT_NAME,
       slug: OXRM_PRODUCT_SLUG,
       version: OXRM_PRODUCT_VERSION
-    }
+    },
+    deployment: oxrmDeploymentInfoFromEnv(process.env)
   }));
 
   app.all("/mcp", async (request, reply) => {
     const server = new McpServer({
       name: "oxrm",
       version: OXRM_PRODUCT_VERSION
+    }, {
+      instructions: serverInstructions
     });
 
     server.resource("crm.queue.today", "crm://queue/today", async (uri) => ({
@@ -1078,7 +1097,7 @@ export async function buildMcpHttpServer() {
 
     server.tool(
       "crm.get_backup_health",
-      "Inspect latest backup state. Degraded means no successful backup within 26 hours.",
+      "Inspect latest backup state. Degraded applies only when backups are required for this instance.",
       {},
       async () => toContent(await tools.services.getBackupHealth())
     );

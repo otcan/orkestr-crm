@@ -6,7 +6,7 @@ cd "$repo_root"
 
 usage() {
   cat <<'EOF'
-Usage: scripts/crm <command> [args]
+Usage: scripts/oxrm-internal <command> [args]
 
 Commands:
   build                         Build all workspaces
@@ -63,13 +63,13 @@ case "$command" in
     shift
     case "$service" in
       api|mcp|worker|scheduler|backup)
-        run_workspace_script "@orkestr-crm/$service" dev "$@"
+        run_workspace_script "@oxrm/$service" dev "$@"
         ;;
       web)
-        run_workspace_script "@orkestr-crm/web" start "$@"
+        run_workspace_script "@oxrm/web" start "$@"
         ;;
       web-container|web:container)
-        run_workspace_script "@orkestr-crm/web" start:container "$@"
+        run_workspace_script "@oxrm/web" start:container "$@"
         ;;
       *)
         echo "Unknown dev service: $service" >&2
@@ -86,13 +86,13 @@ case "$command" in
     shift
     case "$service" in
       api|mcp)
-        exec pnpm --filter "@orkestr-crm/$service" exec tsx src/server.ts "$@"
+        exec pnpm --filter "@oxrm/$service" exec tsx src/server.ts "$@"
         ;;
       worker|scheduler)
-        exec pnpm --filter "@orkestr-crm/$service" exec tsx src/index.ts "$@"
+        exec pnpm --filter "@oxrm/$service" exec tsx src/index.ts "$@"
         ;;
       backup)
-        exec pnpm --filter "@orkestr-crm/backup" exec tsx src/index.ts "$@"
+        exec pnpm --filter "@oxrm/backup" exec tsx src/index.ts "$@"
         ;;
       *)
         echo "Unknown run service: $service" >&2
@@ -101,10 +101,10 @@ case "$command" in
     esac
     ;;
   cli)
-    run_workspace_script "@orkestr-crm/cli" dev "$@"
+    run_workspace_script "@oxrm/cli" dev "$@"
     ;;
   smoke)
-    run_workspace_script "@orkestr-crm/cli" smoke "$@"
+    run_workspace_script "@oxrm/cli" smoke "$@"
     ;;
   db)
     task="${1:-}"
@@ -115,7 +115,7 @@ case "$command" in
     shift
     case "$task" in
       generate|migrate|seed|demo|smoke)
-        run_workspace_script "@orkestr-crm/db" "db:$task" "$@"
+        run_workspace_script "@oxrm/db" "db:$task" "$@"
         ;;
       *)
         echo "Unknown db task: $task" >&2
@@ -132,16 +132,16 @@ case "$command" in
     shift
     case "$task" in
       run)
-        run_workspace_script "@orkestr-crm/backup" start "$@"
+        run_workspace_script "@oxrm/backup" start "$@"
         ;;
       dev|verify)
-        run_workspace_script "@orkestr-crm/backup" "$task" "$@"
+        run_workspace_script "@oxrm/backup" "$task" "$@"
         ;;
       verify-source)
         if [[ $# -eq 0 ]]; then
-          exec pnpm --filter @orkestr-crm/backup exec tsx src/verify.ts
+          exec pnpm --filter @oxrm/backup exec tsx src/verify.ts
         fi
-        exec pnpm --filter @orkestr-crm/backup exec tsx src/verify.ts -- "$@"
+        exec pnpm --filter @oxrm/backup exec tsx src/verify.ts -- "$@"
         ;;
       *)
         echo "Unknown backup task: $task" >&2
@@ -167,7 +167,7 @@ case "$command" in
       usage
       exit 2
     fi
-    exec scripts/crm-instance "$@"
+    exec scripts/oxrm-instance "$@"
     ;;
   *)
     echo "Unknown command: $command" >&2

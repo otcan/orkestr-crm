@@ -10,4 +10,5 @@ data/
 !.gitkeep
 .backups/
 **/.backups/
+.deployments/
 instances/*.local.env

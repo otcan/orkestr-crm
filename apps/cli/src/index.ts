@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { OXRM_PRODUCT_NAME, OXRM_PRODUCT_SLUG, OXRM_PRODUCT_VERSION } from "@orkestr-crm/shared";
+import { OXRM_PRODUCT_NAME, OXRM_PRODUCT_SLUG, OXRM_PRODUCT_VERSION, planActionSchema } from "@oxrm/shared";
+import { z } from "zod";
 
 interface CliContext {
   apiUrl: string;
@@ -100,6 +101,8 @@ function parseJsonFlag(flags: Map<string, string | boolean>, key: string) {
   return JSON.parse(value);
 }
 
+const planInputSchema = z.union([planActionSchema, z.array(planActionSchema)]);
+
 async function main() {
   const parsed = parseArgs(process.argv.slice(2));
   const ctx = getContext(parsed.flags);
@@ -131,6 +134,7 @@ async function main() {
             "mcp:call TOOL --input '{...}'",
             "mcp:read URI",
             "mcp:prompt NAME --args '{...}'",
+            "plan:validate --input '{...}'",
             "smoke [--keep-test-data]"
           ]
         },
@@ -424,6 +428,24 @@ async function main() {
         )
       );
       break;
+
+    case "plan:validate": {
+      const planInput = planInputSchema.parse(parseJsonFlag(parsed.flags, "input"));
+      const actions = Array.isArray(planInput) ? planInput : [planInput];
+      print({
+        status: "ok",
+        actionCount: actions.length,
+        actions: actions.map((action) => ({
+          id: action.id,
+          title: action.title,
+          surface: action.surface,
+          operation: action.operation,
+          requiresApproval: action.requiresApproval,
+          cliCommand: action.cli ? [action.cli.command, ...action.cli.args].join(" ") : undefined
+        }))
+      });
+      break;
+    }
 
     case "smoke": {
       const health = await requestApi(ctx, "/api/health");

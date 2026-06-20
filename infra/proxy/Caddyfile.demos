@@ -1,0 +1,35 @@
+job-search-demo.oxrm.orkestr.de {
+	encode gzip zstd
+
+	basic_auth /* {
+		{$OXRM_DEMO_ADMIN_USER} {$OXRM_DEMO_ADMIN_PASSWORD_HASH}
+	}
+
+	handle /api/* {
+		reverse_proxy 127.0.0.1:{$JOB_SEARCH_DEMO_API_PORT}
+	}
+
+	handle {
+		root * /srv/oxrm-web
+		try_files {path} /index.html
+		file_server
+	}
+}
+
+linkedin-outreach-demo.oxrm.orkestr.de {
+	encode gzip zstd
+
+	basic_auth /* {
+		{$OXRM_DEMO_ADMIN_USER} {$OXRM_DEMO_ADMIN_PASSWORD_HASH}
+	}
+
+	handle /api/* {
+		reverse_proxy 127.0.0.1:{$LINKEDIN_OUTREACH_DEMO_API_PORT}
+	}
+
+	handle {
+		root * /srv/oxrm-web
+		try_files {path} /index.html
+		file_server
+	}
+}

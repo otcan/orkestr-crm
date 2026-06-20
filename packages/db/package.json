@@ -1,5 +1,5 @@
 {
-  "name": "@orkestr-crm/db",
+  "name": "@oxrm/db",
   "version": "0.2.1",
   "private": true,
   "type": "module",
@@ -19,7 +19,7 @@
     "db:smoke": "tsx src/smoke.ts"
   },
   "dependencies": {
-    "@orkestr-crm/shared": "workspace:*",
+    "@oxrm/shared": "workspace:*",
     "drizzle-orm": "^0.45.0",
     "postgres": "^3.4.0"
   },

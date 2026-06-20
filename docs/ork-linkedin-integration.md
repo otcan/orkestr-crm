@@ -24,7 +24,7 @@ MCP tools and stable HTTP/API contracts only.
 
 ## Forbidden Paths
 
-- Importing `@orkestr-crm/*` from `ork-linkedin`.
+- Importing `@oxrm/*` from `ork-linkedin`.
 - Importing `ork-linkedin` packages from oXRM.
 - Sharing browser profiles, cookies, local paths, or campaign-private prompts.
 - Recording `connection_sent` before `ork-linkedin` returns verified send

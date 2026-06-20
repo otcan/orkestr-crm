@@ -13,13 +13,13 @@ import { TaskEditForm, TaskRow, TaskStatus, TaskType } from "./models";
       @if (!editing) {
         <dl class="detail-grid">
           <div><dt>Title</dt><dd>{{ task.title }}</dd></div>
-          <div><dt>Status</dt><dd>{{ task.status }}</dd></div>
-          <div><dt>Type</dt><dd>{{ task.type }}</dd></div>
+          <div><dt>Status</dt><dd>{{ label(task.status) }}</dd></div>
+          <div><dt>Type</dt><dd>{{ label(task.type) }}</dd></div>
           <div><dt>Priority</dt><dd>{{ task.priority }}</dd></div>
           <div><dt>Due</dt><dd>{{ task.dueAt ? (task.dueAt | date:'short') : "No due date" }}</dd></div>
-          <div><dt>Lead</dt><dd>{{ task.lead?.fullName || "Unlinked" }}</dd></div>
-          <div><dt>Person</dt><dd>{{ task.person?.fullName || "Unlinked" }}</dd></div>
-          <div><dt>Company</dt><dd>{{ task.company?.name || "Unlinked" }}</dd></div>
+          <div><dt>Linked record</dt><dd>{{ task.xrmRecord?.displayName || task.lead?.fullName || "None" }}</dd></div>
+          <div><dt>Person</dt><dd>{{ task.person?.fullName || task.lead?.fullName || "None" }}</dd></div>
+          <div><dt>Company</dt><dd>{{ task.company?.name || task.lead?.company || "None" }}</dd></div>
           <div><dt>Created</dt><dd>{{ task.createdAt ? (task.createdAt | date:'short') : "Unknown" }}</dd></div>
           <div><dt>Updated</dt><dd>{{ task.updatedAt ? (task.updatedAt | date:'short') : "Unknown" }}</dd></div>
         </dl>
@@ -86,6 +86,13 @@ export class TaskDetailComponent implements OnChanges {
 
   save() {
     this.saveTask.emit(this.form);
+  }
+
+  label(value: string) {
+    return value
+      .replace(/[_.-]+/g, " ")
+      .replace(/\s+/g, " ")
+      .replace(/\b\w/g, (letter) => letter.toUpperCase());
   }
 }
 

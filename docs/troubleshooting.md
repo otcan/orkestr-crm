@@ -52,7 +52,7 @@ instance's local Docker data:
 ./oxrm reset
 ./oxrm start
 ./oxrm ready
-./oxrm demo
+./oxrm demo job-search
 ./oxrm test
 ```
 
@@ -95,5 +95,6 @@ If the instance is disposable, use `./oxrm reset` and rerun the demo path.
 ./oxrm verify
 ```
 
-The public demo does not need real backup credentials. Keep backup tokens and
-private target repositories out of version control.
+The public demo does not need real backup credentials. In local development,
+backup health is optional unless `OXRM_BACKUP_REQUIRED=true` is set. Keep backup
+tokens and private target repositories out of version control.

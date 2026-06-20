@@ -1,4 +1,4 @@
-import { backupRuns, createDatabase } from "@orkestr-crm/db";
+import { backupRuns, createDatabase } from "@oxrm/db";
 import { execFile } from "node:child_process";
 import { desc } from "drizzle-orm";
 import { access, rm } from "node:fs/promises";
@@ -99,6 +99,7 @@ async function verifyRestore(databaseUrl: string, dumpPath: string) {
 }
 
 const config = loadBackupConfig();
+const pullFromGit = Boolean(process.env.BACKUP_GITHUB_REPO?.trim() && config.githubToken);
 const { db, queryClient } = createDatabase(config.databaseUrl);
 
 try {
@@ -111,7 +112,7 @@ try {
     throw new Error("No successful backup artifact found");
   }
 
-  if (config.nodeEnv === "production") {
+  if (pullFromGit) {
     await rm(config.workspace, { recursive: true, force: true });
     await execFileAsync("git", ["clone", repoUrl(config.githubRepo, config.githubToken), config.workspace], {
       env: process.env
@@ -125,7 +126,7 @@ try {
   console.log(
     JSON.stringify(
       {
-        service: "orkestr-crm-backup-verify",
+        service: "oxrm-backup-verify",
         status: "ok",
         artifactPath: latest.artifactPath,
         restore,

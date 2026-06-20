@@ -1,14 +1,28 @@
 import cors from "@fastify/cors";
-import { createCrmServices } from "@orkestr-crm/core";
-import { createDatabase } from "@orkestr-crm/db";
+import { createCrmServices } from "@oxrm/core";
+import { createDatabase } from "@oxrm/db";
 import Fastify from "fastify";
 import { ZodError } from "zod";
 import { loadConfig } from "./config.js";
 
+function parseJsonQuery(value: string | undefined) {
+  if (!value) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(value);
+  } catch {
+    const error = new Error("invalid_json_query");
+    (error as Error & { statusCode?: number; code?: string }).statusCode = 400;
+    (error as Error & { statusCode?: number; code?: string }).code = "invalid_json_query";
+    throw error;
+  }
+}
+
 export async function buildServer() {
   const config = loadConfig();
   const { db, queryClient } = createDatabase(config.databaseUrl);
-  const services = createCrmServices({ db });
+  const services = createCrmServices({ db, backupsRequired: config.backupsRequired });
 
   const app = Fastify({
     logger: {
@@ -108,6 +122,29 @@ export async function buildServer() {
     return objectType;
   });
 
+  app.get("/api/xrm/workspace", async (request) => {
+    const query = request.query as { templateKey?: string; limit?: string };
+    return services.getWorkspaceLayout({
+      templateKey: query.templateKey,
+      limit: query.limit ? Number(query.limit) : undefined
+    });
+  });
+
+  app.get("/api/xrm/semantic-fields", async (request) => {
+    const query = request.query as { limit?: string };
+    return services.listXrmSemanticFields({ limit: query.limit ? Number(query.limit) : undefined });
+  });
+
+  app.post("/api/xrm/semantic-fields", async (request, reply) => {
+    const field = await services.upsertXrmSemanticField(request.body);
+    return reply.status(201).send(field);
+  });
+
+  app.post("/api/xrm/field-mappings", async (request, reply) => {
+    const mapping = await services.upsertXrmFieldMapping(request.body);
+    return reply.status(201).send(mapping);
+  });
+
   app.get("/api/xrm/records", async (request) => {
     const query = request.query as { objectType?: string; q?: string; includeDeleted?: string; limit?: string };
     return services.searchXrmRecords({
@@ -145,6 +182,18 @@ export async function buildServer() {
     const params = request.params as { id: string };
     const query = request.query as { limit?: string };
     return services.listXrmRecordEvents({ recordId: params.id, limit: query.limit ? Number(query.limit) : undefined });
+  });
+
+  app.get("/api/xrm/records/:id/files", async (request) => {
+    const params = request.params as { id: string };
+    const query = request.query as { limit?: string };
+    return services.listXrmRecordFiles({ recordId: params.id, limit: query.limit ? Number(query.limit) : undefined });
+  });
+
+  app.post("/api/xrm/records/:id/files", async (request, reply) => {
+    const params = request.params as { id: string };
+    const file = await services.createXrmFile({ ...(request.body as object), recordId: params.id });
+    return reply.status(201).send(file);
   });
 
   app.post("/api/xrm/relationship-types", async (request, reply) => {
@@ -210,10 +259,13 @@ export async function buildServer() {
 
   app.get("/api/views/:idOrKey/run", async (request) => {
     const params = request.params as { idOrKey: string };
-    const query = request.query as { limit?: string };
+    const query = request.query as { q?: string; sort?: string; dir?: "asc" | "desc"; filters?: string; limit?: string };
     return services.runView({
       viewId: params.idOrKey,
       key: params.idOrKey,
+      q: query.q,
+      filters: parseJsonQuery(query.filters),
+      sort: query.sort ? [{ field: query.sort, direction: query.dir ?? "asc" }] : undefined,
       limit: query.limit ? Number(query.limit) : undefined
     });
   });

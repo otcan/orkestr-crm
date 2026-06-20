@@ -10,7 +10,7 @@ async function tick() {
 
   console.log(
     JSON.stringify({
-      service: "orkestr-crm-scheduler",
+      service: "oxrm-scheduler",
       status: "idle",
       sampleAvailableWindows: available.length,
       message: "Availability engine scaffold is ready; external calendar free/busy connectors come next."

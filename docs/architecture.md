@@ -1,10 +1,17 @@
 # oXRM Architecture
 
-oXRM is the product shorthand for Orkestr XRM. Operator-facing commands use `oxrm`; some internal package scopes and Docker project names still carry the older CRM name for compatibility until a separate runtime identifier migration is planned.
+oXRM is a self-hosted outreach workspace for high-context outreach, from job
+applications and CV follow-ups to customer outreach, partnerships, and
+founder-led sales. Operator-facing commands use `oxrm`; some internal package
+scopes and Docker project names still carry the older CRM name for
+compatibility until a separate runtime identifier migration is planned.
 
 ## Goal
 
-oXRM is a minimal, containerized, MCP-first relationship system. The first implemented domain is an outreach ledger for tracking LinkedIn outreach flows, Sales Navigator work, email conversations, and scheduling activity across multiple operators and agents.
+oXRM is a minimal, containerized local app for managing contacts, targets,
+tasks, follow-ups, notes, drafts, and activity history. The first implemented
+domain is high-context outreach across job search, customer outreach, email,
+Sales Navigator, LinkedIn, and manual operator notes.
 
 The system should be easy to run, easy to back up, and safe for agents to operate directly. The web UI is important, but the primary product contract is the agent tool surface: agents should be able to inspect CRM state, plan work, execute approved updates, sync integrations, and propose code changes through dedicated pull requests.
 
@@ -87,7 +94,7 @@ Core containers:
 ## Repository Layout
 
 ```txt
-orkestr-crm/
+oxrm/
   apps/
     web/
       src/
@@ -578,7 +585,9 @@ Rules:
 
 ### Agent
 
-An agent is an automated operator or code contributor.
+An agent is an automated actor with auditable identity. The schema does not
+encode a closed taxonomy of agent roles; runtimes can use their own `type`
+strings and describe behavior through capabilities and runtime configuration.
 
 Fields:
 
@@ -587,15 +596,18 @@ Fields:
 - `type`
 - `status`
 - `default_branch_prefix`
+- `capabilities`
+- `runtime_config`
+- `metadata`
 - `created_at`
 - `updated_at`
 
-Types:
+Rules:
 
-- `crm_operator`
-- `code_contributor`
-- `connector_worker`
-- `scheduler_worker`
+- Keep `type` as an extensible text label, not a Postgres enum.
+- Store permission-like behavior in `capabilities`.
+- Store provider, command, model, or runtime details in `runtime_config`.
+- Preserve imported or legacy role names in `metadata` when useful.
 
 ### Agent Action
 
@@ -711,7 +723,7 @@ Daily GitHub backups are mandatory.
 Use a dedicated private repository, for example:
 
 ```txt
-example-org/orkestr-crm-backups
+example-org/oxrm-backups
 ```
 
 Backup worker responsibilities:
@@ -738,7 +750,9 @@ Hard enforcement:
 
 - Production containers require `BACKUP_GITHUB_REPO`.
 - Production containers require backup credentials.
-- Health check is degraded if the latest successful backup is older than 26 hours.
+- Health check is degraded if backups are required and the latest successful
+  backup is older than 26 hours. Local demo instances report backup health as
+  optional unless `OXRM_BACKUP_REQUIRED=true` is set.
 - Startup should fail in production if backup configuration is missing.
 - A manual `backup:run` command must exist.
 - A latest-backup verification command must restore the dump into an isolated
@@ -751,10 +765,10 @@ Backup manifest:
 ```json
 {
   "createdAt": "2026-06-14T03:00:00.000Z",
-  "database": "orkestr_crm",
+  "database": "oxrm",
   "format": "pg_dump_custom",
   "schemaVersion": "0001",
-  "gitRepo": "example-org/orkestr-crm-backups",
+  "gitRepo": "example-org/oxrm-backups",
   "commitSha": "..."
 }
 ```

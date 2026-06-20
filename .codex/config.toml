@@ -1,0 +1,21 @@
+[project]
+name = "oXRM"
+slug = "oxrm"
+repository = "https://github.com/otcan/oxrm"
+
+[commands]
+demo = "./oxrm codex-demo"
+check = "./oxrm codex-demo --check"
+health = "./oxrm cli health"
+queue = "./oxrm cli mcp:read crm://queue/today"
+job_applications = "./oxrm cli mcp:call xrm.run_view --input '{\"key\":\"job_search.applications\"}'"
+founder_search = "./oxrm cli mcp:call crm.search_leads --input '{\"query\":\"founder\"}'"
+
+[agent]
+instructions = """
+Use oXRM as a local-first outreach workspace. Demo data must be synthetic.
+Read queues, views, records, relationships, files, and timeline events before
+drafting recommendations. Draft-only is the default for external actions.
+Never send emails, LinkedIn messages, applications, or other external actions
+without explicit human approval outside this repo.
+"""

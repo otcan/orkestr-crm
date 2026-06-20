@@ -1,5 +1,5 @@
 name: Feature
-description: Track a scoped Orkestr CRM feature or improvement.
+description: Track a scoped oXRM feature or improvement.
 title: "[Feature]: "
 labels: ["enhancement"]
 body:
@@ -24,4 +24,3 @@ body:
       description: How do we know this is done?
     validations:
       required: true
-

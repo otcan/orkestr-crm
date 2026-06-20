@@ -1,46 +1,51 @@
 {
-  "name": "orkestr-crm",
+  "name": "oxrm",
   "version": "0.2.1",
-  "description": "MCP-first oXRM relationship system for agent-operated workflows.",
+  "description": "Self-hosted outreach workspace for job search, customer outreach, partnerships, and follow-ups.",
   "private": true,
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/otcan/orkestr-crm.git"
+    "url": "https://github.com/otcan/oxrm.git"
   },
-  "homepage": "https://github.com/otcan/orkestr-crm#readme",
+  "homepage": "https://github.com/otcan/oxrm#readme",
   "bugs": {
-    "url": "https://github.com/otcan/orkestr-crm/issues"
+    "url": "https://github.com/otcan/oxrm/issues"
   },
   "keywords": [
+    "self-hosted",
+    "outreach",
+    "job-search",
     "crm",
+    "xrm",
+    "agents",
     "mcp",
-    "outreach-ledger",
-    "agent-workflows",
-    "sales-operations"
+    "docker",
+    "local-first",
+    "sales",
+    "founder-tools"
   ],
   "packageManager": "pnpm@11.6.0",
   "type": "module",
   "scripts": {
-    "ops": "scripts/crm",
-    "instance": "scripts/crm instance",
-    "build": "scripts/crm build",
-    "check": "scripts/crm check",
-    "typecheck": "scripts/crm typecheck",
-    "dev:api": "scripts/crm dev api",
-    "dev:mcp": "scripts/crm dev mcp",
-    "dev:web": "scripts/crm dev web",
-    "oxrm": "scripts/crm cli",
-    "crm": "scripts/crm cli",
-    "smoke": "scripts/crm smoke",
-    "db:generate": "scripts/crm db generate",
-    "db:migrate": "scripts/crm db migrate",
-    "db:seed": "scripts/crm db seed",
-    "db:demo": "scripts/crm db demo",
-    "db:smoke": "scripts/crm db smoke",
-    "compose:config": "scripts/crm compose config",
-    "backup:run": "scripts/crm backup run",
-    "backup:verify": "scripts/crm backup verify"
+    "ops": "scripts/oxrm-internal",
+    "instance": "scripts/oxrm-internal instance",
+    "build": "scripts/oxrm-internal build",
+    "check": "scripts/oxrm-internal check",
+    "typecheck": "scripts/oxrm-internal typecheck",
+    "dev:api": "scripts/oxrm-internal dev api",
+    "dev:mcp": "scripts/oxrm-internal dev mcp",
+    "dev:web": "scripts/oxrm-internal dev web",
+    "oxrm": "scripts/oxrm-internal cli",
+    "smoke": "scripts/oxrm-internal smoke",
+    "db:generate": "scripts/oxrm-internal db generate",
+    "db:migrate": "scripts/oxrm-internal db migrate",
+    "db:seed": "scripts/oxrm-internal db seed",
+    "db:demo": "scripts/oxrm-internal db demo",
+    "db:smoke": "scripts/oxrm-internal db smoke",
+    "compose:config": "scripts/oxrm-internal compose config",
+    "backup:run": "scripts/oxrm-internal backup run",
+    "backup:verify": "scripts/oxrm-internal backup verify"
   },
   "engines": {
     "node": ">=22.0.0",

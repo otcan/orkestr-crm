@@ -99,11 +99,22 @@ the public demo.
 - Do not use public demo data as real personal data.
 - Do not automate LinkedIn scraping, spam, or mass outreach.
 
+## Plan Contract
+
+Agent plans use a neutral action contract before execution. The existing CLI is
+the adapter surface; do not add a parallel command runner for plan actions.
+
+Validate a candidate action locally:
+
+```bash
+./oxrm cli plan:validate --input '{"id":"check-queue","title":"Check today queue","surface":"mcp","operation":"crm://queue/today"}'
+```
+
 ## ork-linkedin Boundary
 
 LinkedIn browser/runtime mechanics live in `otcan/ork-linkedin`. oXRM remains
-the relationship ledger and exposes MCP/API write paths for verified events,
-blockers, approvals, tasks, and audit links. See
+the local outreach workspace and exposes MCP/API write paths for verified
+events, blockers, approvals, tasks, and audit links. See
 [ork-linkedin Integration Boundary](ork-linkedin-integration.md).
 
 ## Useful Examples

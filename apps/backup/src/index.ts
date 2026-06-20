@@ -1,4 +1,4 @@
-import { backupRuns, createDatabase } from "@orkestr-crm/db";
+import { backupRuns, createDatabase } from "@oxrm/db";
 import { eq } from "drizzle-orm";
 import { execFile } from "node:child_process";
 import { mkdir, rm, writeFile } from "node:fs/promises";
@@ -47,6 +47,7 @@ function repoUrl(repo: string, token?: string) {
 }
 
 const config = loadBackupConfig();
+const pushToGit = Boolean(process.env.BACKUP_GITHUB_REPO?.trim() && config.githubToken);
 const { db, queryClient } = createDatabase(config.databaseUrl);
 const createdAt = new Date();
 const stamp = createdAt.toISOString().replace(/[:.]/g, "-");
@@ -71,7 +72,7 @@ try {
     .returning();
   runId = backupRun?.id;
 
-  if (config.nodeEnv === "production") {
+  if (pushToGit) {
     await rm(config.workspace, { recursive: true, force: true });
     await run("git", ["clone", repoUrl(config.githubRepo, config.githubToken), config.workspace]);
   }
@@ -91,7 +92,7 @@ try {
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
   let commitSha: string | null = null;
-  if (config.nodeEnv === "production") {
+  if (pushToGit) {
     await run("git", ["-C", config.workspace, "config", "user.name", config.gitAuthorName]);
     await run("git", ["-C", config.workspace, "config", "user.email", config.gitAuthorEmail]);
     await run("git", ["-C", config.workspace, "add", relativeDumpPath, relativeManifestPath]);
@@ -114,7 +115,7 @@ try {
       .where(eq(backupRuns.id, runId));
   }
 
-  console.log(JSON.stringify({ status: "ok", artifactPath: relativeDumpPath, commitSha }, null, 2));
+  console.log(JSON.stringify({ status: "ok", artifactPath: relativeDumpPath, commitSha, pushed: pushToGit }, null, 2));
 } catch (error) {
   if (runId) {
     await db

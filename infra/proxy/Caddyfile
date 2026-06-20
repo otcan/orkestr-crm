@@ -1,8 +1,8 @@
-{$ORKESTR_HOST} {
+{$OXRM_HOST} {
   encode gzip zstd
 
   basicauth /* {
-    {$ORKESTR_ADMIN_USER} {$ORKESTR_ADMIN_PASSWORD_HASH}
+    {$OXRM_ADMIN_USER} {$OXRM_ADMIN_PASSWORD_HASH}
   }
 
   handle /api/* {

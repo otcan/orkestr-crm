@@ -1,5 +1,5 @@
 {
-  "name": "@orkestr-crm/scheduler",
+  "name": "@oxrm/scheduler",
   "version": "0.2.1",
   "private": true,
   "type": "module",
@@ -10,7 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@orkestr-crm/db": "workspace:*"
+    "@oxrm/db": "workspace:*"
   },
   "devDependencies": {
     "tsx": "^4.20.0",

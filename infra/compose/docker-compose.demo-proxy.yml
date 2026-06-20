@@ -1,0 +1,19 @@
+services:
+  demo-proxy:
+    image: caddy:2
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      OXRM_DEMO_ADMIN_USER: ${OXRM_DEMO_ADMIN_USER}
+      OXRM_DEMO_ADMIN_PASSWORD_HASH: ${OXRM_DEMO_ADMIN_PASSWORD_HASH}
+      JOB_SEARCH_DEMO_API_PORT: ${JOB_SEARCH_DEMO_API_PORT:-18511}
+      LINKEDIN_OUTREACH_DEMO_API_PORT: ${LINKEDIN_OUTREACH_DEMO_API_PORT:-18521}
+    volumes:
+      - ../proxy/Caddyfile.demos:/etc/caddy/Caddyfile:ro
+      - ../../apps/web/dist/web/browser:/srv/oxrm-web:ro
+      - demo-caddy-data:/data
+      - demo-caddy-config:/config
+
+volumes:
+  demo-caddy-data:
+  demo-caddy-config:

@@ -5,6 +5,39 @@ export const OXRM_PRODUCT_SLUG = "oxrm";
 export const OXRM_PRODUCT_VERSION = "0.2.1";
 export const OXRM_COMPAT_COMMAND = "ocrm";
 
+export interface OxrmDeploymentInfo {
+  target: string;
+  version: string;
+  gitSha?: string;
+  gitRef?: string;
+  githubRunId?: string;
+  githubRunNumber?: string;
+  deployedAt?: string;
+}
+
+export function oxrmDeploymentInfoFromEnv(env: Record<string, string | undefined>): OxrmDeploymentInfo {
+  const info: OxrmDeploymentInfo = {
+    target: env["OXRM_DEPLOY_TARGET"] || "local",
+    version: env["OXRM_DEPLOY_VERSION"] || OXRM_PRODUCT_VERSION
+  };
+  if (env["OXRM_DEPLOY_GIT_SHA"]) {
+    info.gitSha = env["OXRM_DEPLOY_GIT_SHA"];
+  }
+  if (env["OXRM_DEPLOY_GIT_REF"]) {
+    info.gitRef = env["OXRM_DEPLOY_GIT_REF"];
+  }
+  if (env["OXRM_DEPLOY_GITHUB_RUN_ID"]) {
+    info.githubRunId = env["OXRM_DEPLOY_GITHUB_RUN_ID"];
+  }
+  if (env["OXRM_DEPLOY_GITHUB_RUN_NUMBER"]) {
+    info.githubRunNumber = env["OXRM_DEPLOY_GITHUB_RUN_NUMBER"];
+  }
+  if (env["OXRM_DEPLOYED_AT"]) {
+    info.deployedAt = env["OXRM_DEPLOYED_AT"];
+  }
+  return info;
+}
+
 export const assignmentStatusSchema = z.enum([
   "new",
   "queued",
@@ -65,12 +98,7 @@ export const integrationStatusSchema = z.enum([
   "archived"
 ]);
 
-export const agentTypeSchema = z.enum([
-  "crm_operator",
-  "code_contributor",
-  "connector_worker",
-  "scheduler_worker"
-]);
+export const agentTypeSchema = z.string().min(1);
 
 export const agentStatusSchema = z.enum(["active", "paused", "archived"]);
 export const approvalStatusSchema = z.enum(["pending", "approved", "rejected", "expired"]);
@@ -78,6 +106,63 @@ export const backupStatusSchema = z.enum(["running", "succeeded", "failed"]);
 export const taskStatusSchema = z.enum(["open", "in_progress", "blocked", "done", "canceled"]);
 export const taskTypeSchema = z.enum(["outreach", "follow_up", "research", "data_cleanup", "approval", "manual"]);
 export const noteStatusSchema = z.enum(["confirmed_sent", "no_note", "unconfirmed"]);
+
+export const agentCapabilitySchema = z.object({
+  key: z.string().min(1),
+  label: z.string().optional(),
+  description: z.string().optional(),
+  level: z.enum(["read", "write", "external_side_effect", "system"]).default("read"),
+  config: z.record(z.string(), z.unknown()).optional()
+});
+
+export const agentRuntimeConfigSchema = z.object({
+  provider: z.string().optional(),
+  runtime: z.string().optional(),
+  model: z.string().optional(),
+  command: z.string().optional(),
+  env: z.record(z.string(), z.string()).optional()
+});
+
+export const agentIdentitySchema = z.object({
+  id: z.string().uuid().optional(),
+  name: z.string().min(1),
+  type: agentTypeSchema.default("operator"),
+  status: agentStatusSchema.default("active"),
+  defaultBranchPrefix: z.string().optional(),
+  capabilities: z.array(agentCapabilitySchema).default([]),
+  runtimeConfig: agentRuntimeConfigSchema.default({}),
+  metadata: z.record(z.string(), z.unknown()).default({})
+});
+
+export const cliAdapterCommandSchema = z.object({
+  command: z.string().min(1),
+  args: z.array(z.string()).default([]),
+  input: z.record(z.string(), z.unknown()).optional(),
+  requiresApproval: z.boolean().default(false),
+  timeoutMs: z.number().int().positive().optional()
+});
+
+export const planActionSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  surface: z.enum(["mcp", "api", "cli"]),
+  operation: z.string().min(1),
+  input: z.record(z.string(), z.unknown()).default({}),
+  cli: cliAdapterCommandSchema.optional(),
+  requiresApproval: z.boolean().default(false),
+  agentId: z.string().uuid().optional(),
+  metadata: z.record(z.string(), z.unknown()).default({})
+});
+
+export const planExecutionResultSchema = z.object({
+  actionId: z.string().min(1),
+  status: z.enum(["succeeded", "failed", "skipped", "needs_approval"]),
+  output: z.unknown().optional(),
+  error: z.string().optional(),
+  auditId: z.string().uuid().optional(),
+  startedAt: z.string().datetime().optional(),
+  finishedAt: z.string().datetime().optional()
+});
 
 export const createLeadSchema = z.object({
   fullName: z.string().min(1),
@@ -247,9 +332,14 @@ export const xrmSlugSchema = z
 export const xrmFieldDefinitionInputSchema = z.object({
   key: xrmSlugSchema,
   label: z.string().min(1),
-  dataType: z.enum(["text", "number", "boolean", "date", "datetime", "url", "email", "json", "select"]).default("text"),
+  dataType: z.enum(["text", "long_text", "number", "boolean", "date", "datetime", "url", "email", "json", "select", "file_ref"]).default("text"),
   required: z.boolean().default(false),
   indexed: z.boolean().default(false),
+  searchable: z.boolean().default(false),
+  displayOrder: z.number().int().min(0).default(0),
+  summaryRank: z.number().int().min(0).nullable().optional(),
+  isPrimary: z.boolean().default(false),
+  options: z.array(z.record(z.string(), z.unknown())).default([]),
   config: z.record(z.string(), z.unknown()).optional()
 });
 
@@ -321,6 +411,40 @@ export const listXrmRelationshipsSchema = z.object({
   limit: z.number().int().min(1).max(500).default(100)
 });
 
+export const upsertXrmSemanticFieldSchema = z.object({
+  key: xrmSlugSchema,
+  label: z.string().min(1),
+  dataType: z.enum(["text", "long_text", "number", "boolean", "date", "datetime", "url", "email", "json", "select", "file_ref"]).default("text"),
+  description: z.string().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional()
+});
+
+export const upsertXrmFieldMappingSchema = z.object({
+  objectType: xrmSlugSchema,
+  fieldKey: xrmSlugSchema,
+  semanticFieldKey: xrmSlugSchema,
+  confidence: z.number().int().min(0).max(100).default(100),
+  transform: z.record(z.string(), z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional()
+});
+
+export const createXrmFileSchema = z.object({
+  recordId: z.string().uuid(),
+  kind: z.enum(["document", "raw_source", "draft", "attachment", "note", "export"]).default("document"),
+  title: z.string().min(1),
+  path: z.string().min(1),
+  mimeType: z.string().optional(),
+  size: z.number().int().min(0).optional(),
+  checksum: z.string().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+  createdByAgentId: z.string().uuid().optional()
+});
+
+export const workspaceLayoutSchema = z.object({
+  templateKey: xrmSlugSchema.default("job_search"),
+  limit: z.number().int().min(1).max(500).default(100)
+});
+
 export type AssignmentStatus = z.infer<typeof assignmentStatusSchema>;
 export type ActivityType = z.infer<typeof activityTypeSchema>;
 export type Channel = z.infer<typeof channelSchema>;
@@ -329,6 +453,12 @@ export type IntegrationProvider = z.infer<typeof integrationProviderSchema>;
 export type IntegrationStatus = z.infer<typeof integrationStatusSchema>;
 export type AgentType = z.infer<typeof agentTypeSchema>;
 export type AgentStatus = z.infer<typeof agentStatusSchema>;
+export type AgentCapability = z.infer<typeof agentCapabilitySchema>;
+export type AgentRuntimeConfig = z.infer<typeof agentRuntimeConfigSchema>;
+export type AgentIdentity = z.infer<typeof agentIdentitySchema>;
+export type CliAdapterCommand = z.infer<typeof cliAdapterCommandSchema>;
+export type PlanAction = z.infer<typeof planActionSchema>;
+export type PlanExecutionResult = z.infer<typeof planExecutionResultSchema>;
 export type ApprovalStatus = z.infer<typeof approvalStatusSchema>;
 export type BackupStatus = z.infer<typeof backupStatusSchema>;
 export type TaskStatus = z.infer<typeof taskStatusSchema>;
@@ -350,3 +480,7 @@ export type SearchXrmRecordsInput = z.infer<typeof searchXrmRecordsSchema>;
 export type CreateXrmRelationshipTypeInput = z.infer<typeof createXrmRelationshipTypeSchema>;
 export type LinkXrmRecordsInput = z.infer<typeof linkXrmRecordsSchema>;
 export type ListXrmRelationshipsInput = z.infer<typeof listXrmRelationshipsSchema>;
+export type UpsertXrmSemanticFieldInput = z.infer<typeof upsertXrmSemanticFieldSchema>;
+export type UpsertXrmFieldMappingInput = z.infer<typeof upsertXrmFieldMappingSchema>;
+export type CreateXrmFileInput = z.infer<typeof createXrmFileSchema>;
+export type WorkspaceLayoutInput = z.infer<typeof workspaceLayoutSchema>;

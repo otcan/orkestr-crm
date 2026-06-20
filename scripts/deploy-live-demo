@@ -1,0 +1,234 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: scripts/deploy-live-demo <instance> <host> <template> <web-port> <api-port> <mcp-port> <postgres-port> <redis-port>
+
+Deploys one live oXRM public demo on the current Docker host.
+
+The public-demo runtime is intentionally lean:
+  - Caddy serves the built Angular static files.
+  - Docker runs only Postgres and the API for each demo.
+  - MCP, Redis, worker, scheduler, backup, and Angular dev server are not started.
+
+The web/mcp/redis port arguments are accepted for compatibility with older
+deployment callers, but they are not used by the lean runtime.
+
+Required environment:
+  OXRM_DEMO_POSTGRES_PASSWORD
+
+Versioning environment, normally set by CI or host deploy automation:
+  OXRM_DEPLOY_VERSION
+  OXRM_DEPLOY_GIT_SHA
+  OXRM_DEPLOY_GIT_REF
+  OXRM_DEPLOY_GITHUB_RUN_ID
+  OXRM_DEPLOY_GITHUB_RUN_NUMBER
+  OXRM_DEPLOYED_AT
+EOF
+}
+
+if [[ $# -ne 8 ]]; then
+  usage >&2
+  exit 2
+fi
+
+instance="$1"
+host="$2"
+template="$3"
+web_port="$4"
+api_port="$5"
+mcp_port="$6"
+postgres_port="$7"
+redis_port="$8"
+
+case "$instance" in
+  job-search-demo|linkedin-outreach-demo) ;;
+  *)
+    echo "Unknown live demo instance: $instance" >&2
+    exit 2
+    ;;
+esac
+
+case "$template" in
+  job_search)
+    demo_scenario=job-search
+    ;;
+  outreach)
+    demo_scenario=linkedin-outreach
+    ;;
+  *)
+    echo "Unknown demo template: $template" >&2
+    exit 2
+    ;;
+esac
+
+: "${OXRM_DEMO_POSTGRES_PASSWORD:?OXRM_DEMO_POSTGRES_PASSWORD is required}"
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repo_root"
+
+package_version="$(sed -n 's/.*"version": "\([^"]*\)".*/\1/p' package.json | head -n 1)"
+if [[ -z "$package_version" ]]; then
+  echo "Could not read package version from package.json" >&2
+  exit 1
+fi
+
+git_sha="${OXRM_DEPLOY_GIT_SHA:-$(git rev-parse HEAD 2>/dev/null || true)}"
+git_ref="${OXRM_DEPLOY_GIT_REF:-$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)}"
+deploy_version="${OXRM_DEPLOY_VERSION:-${package_version}+local.${git_sha:0:12}}"
+deployed_at="${OXRM_DEPLOYED_AT:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+github_run_id="${OXRM_DEPLOY_GITHUB_RUN_ID:-}"
+github_run_number="${OXRM_DEPLOY_GITHUB_RUN_NUMBER:-}"
+
+env_file="instances/${instance}.local.env"
+tmp_env="$(mktemp)"
+cat > "$tmp_env" <<EOF
+NODE_ENV=production
+LOG_LEVEL=info
+OXRM_BACKUP_REQUIRED=false
+
+POSTGRES_DB=oxrm_${instance//-/_}
+POSTGRES_USER=oxrm_${instance//-/_}
+POSTGRES_PASSWORD=${OXRM_DEMO_POSTGRES_PASSWORD}
+
+HOST_WEB_PORT=${web_port}
+HOST_API_PORT=${api_port}
+HOST_MCP_PORT=${mcp_port}
+HOST_POSTGRES_PORT=${postgres_port}
+HOST_REDIS_PORT=${redis_port}
+
+OXRM_API_URL=http://127.0.0.1:${api_port}
+CRM_API_URL=http://127.0.0.1:${api_port}
+OXRM_MCP_URL=
+CRM_MCP_URL=
+
+OXRM_DEPLOY_TARGET=${instance}
+OXRM_DEPLOY_VERSION=${deploy_version}
+OXRM_DEPLOY_GIT_SHA=${git_sha}
+OXRM_DEPLOY_GIT_REF=${git_ref}
+OXRM_DEPLOY_GITHUB_RUN_ID=${github_run_id}
+OXRM_DEPLOY_GITHUB_RUN_NUMBER=${github_run_number}
+OXRM_DEPLOYED_AT=${deployed_at}
+EOF
+mv "$tmp_env" "$env_file"
+chmod 600 "$env_file"
+
+pnpm --filter @oxrm/web build
+
+compose_project="oxrm-public-${instance}"
+compose_file="infra/compose/docker-compose.public-demo.yml"
+docker compose --env-file "$env_file" -p "$compose_project" -f "$compose_file" up -d postgres
+docker compose --env-file "$env_file" -p "$compose_project" -f "$compose_file" build api
+docker compose --env-file "$env_file" -p "$compose_project" -f "$compose_file" run --rm api scripts/oxrm-internal db migrate
+docker compose --env-file "$env_file" -p "$compose_project" -f "$compose_file" run --rm api scripts/oxrm-internal db seed
+docker compose --env-file "$env_file" -p "$compose_project" -f "$compose_file" run --rm api scripts/oxrm-internal db demo "$demo_scenario"
+docker compose --env-file "$env_file" -p "$compose_project" -f "$compose_file" up -d api
+
+health_json=""
+for _ in $(seq 1 30); do
+  if health_json="$(curl -fsS "http://127.0.0.1:${api_port}/api/health" 2>/dev/null)"; then
+    break
+  fi
+  sleep 1
+done
+if [[ -z "$health_json" ]]; then
+  echo "API did not become healthy on port ${api_port}" >&2
+  docker compose --env-file "$env_file" -p "$compose_project" -f "$compose_file" logs --tail=100 api >&2 || true
+  exit 1
+fi
+HEALTH_JSON="$health_json" EXPECTED_TARGET="$instance" EXPECTED_VERSION="$deploy_version" node <<'NODE'
+const health = JSON.parse(process.env.HEALTH_JSON ?? "{}");
+const target = health.deployment?.target;
+const version = health.deployment?.version;
+if (target !== process.env.EXPECTED_TARGET || version !== process.env.EXPECTED_VERSION) {
+  console.error(
+    JSON.stringify(
+      {
+        error: "deployment_metadata_mismatch",
+        expected: {
+          target: process.env.EXPECTED_TARGET,
+          version: process.env.EXPECTED_VERSION
+        },
+        actual: {
+          target,
+          version
+        }
+      },
+      null,
+      2
+    )
+  );
+  process.exit(1);
+}
+NODE
+
+job_applications_json="$(curl -fsS "http://127.0.0.1:${api_port}/api/views/job_search.applications/run?limit=100")"
+leads_json="$(curl -fsS "http://127.0.0.1:${api_port}/api/leads?limit=100")"
+JOB_APPLICATIONS_JSON="$job_applications_json" LEADS_JSON="$leads_json" EXPECTED_SCENARIO="$demo_scenario" node <<'NODE'
+const jobApplications = JSON.parse(process.env.JOB_APPLICATIONS_JSON ?? "{}");
+const leads = JSON.parse(process.env.LEADS_JSON ?? "[]");
+const scenario = process.env.EXPECTED_SCENARIO;
+const appCount = Array.isArray(jobApplications.rows) ? jobApplications.rows.length : 0;
+const leadCount = Array.isArray(leads) ? leads.length : 0;
+const failures = [];
+
+if (scenario === "job-search") {
+  if (appCount < 1) failures.push("job_search_demo_missing_applications");
+  if (leadCount !== 0) failures.push("job_search_demo_has_outreach_leads");
+}
+
+if (scenario === "linkedin-outreach") {
+  if (leadCount < 1) failures.push("outreach_demo_missing_leads");
+  if (appCount !== 0) failures.push("outreach_demo_has_job_applications");
+}
+
+if (failures.length > 0) {
+  console.error(
+    JSON.stringify(
+      {
+        error: "demo_scenario_smoke_failed",
+        scenario,
+        failures,
+        counts: { jobApplications: appCount, leads: leadCount }
+      },
+      null,
+      2
+    )
+  );
+  process.exit(1);
+}
+NODE
+
+mkdir -p .deployments
+manifest=".deployments/${instance}.json"
+cat > "$manifest" <<EOF
+{
+  "instance": "${instance}",
+  "host": "${host}",
+  "template": "${template}",
+  "demoScenario": "${demo_scenario}",
+  "runtime": "public-lean",
+  "webUrl": "https://${host}",
+  "apiHealthUrl": "https://${host}/api/health",
+  "deployVersion": "${deploy_version}",
+  "packageVersion": "${package_version}",
+  "gitSha": "${git_sha}",
+  "gitRef": "${git_ref}",
+  "githubRunId": "${github_run_id}",
+  "githubRunNumber": "${github_run_number}",
+  "deployedAt": "${deployed_at}",
+  "ports": {
+    "api": ${api_port},
+    "postgres": ${postgres_port},
+    "webCompatibilityArg": ${web_port},
+    "mcpCompatibilityArg": ${mcp_port},
+    "redisCompatibilityArg": ${redis_port}
+  }
+}
+EOF
+
+printf '{"instance":"%s","host":"%s","template":"%s","demoScenario":"%s","runtime":"public-lean","deployVersion":"%s","gitSha":"%s","deployedAt":"%s"}\n' \
+  "$instance" "$host" "$template" "$demo_scenario" "$deploy_version" "$git_sha" "$deployed_at" >> .deployments/history.ndjson
+
+echo "Deployed ${instance} (${deploy_version}) to https://${host}"

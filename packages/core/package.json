@@ -1,5 +1,5 @@
 {
-  "name": "@orkestr-crm/core",
+  "name": "@oxrm/core",
   "version": "0.2.1",
   "private": true,
   "type": "module",
@@ -14,8 +14,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@orkestr-crm/db": "workspace:*",
-    "@orkestr-crm/shared": "workspace:*",
+    "@oxrm/db": "workspace:*",
+    "@oxrm/shared": "workspace:*",
     "drizzle-orm": "^0.45.0",
     "zod": "^4.0.0"
   }

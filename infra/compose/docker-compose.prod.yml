@@ -5,9 +5,9 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      ORKESTR_HOST: ${ORKESTR_HOST}
-      ORKESTR_ADMIN_USER: ${ORKESTR_ADMIN_USER}
-      ORKESTR_ADMIN_PASSWORD_HASH: ${ORKESTR_ADMIN_PASSWORD_HASH}
+      OXRM_HOST: ${OXRM_HOST}
+      OXRM_ADMIN_USER: ${OXRM_ADMIN_USER}
+      OXRM_ADMIN_PASSWORD_HASH: ${OXRM_ADMIN_PASSWORD_HASH}
     volumes:
       - ../proxy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
