@@ -232,9 +232,46 @@ jobs:
             process.exit(1);
           }
           NODE
-          OXRM_DEMO_ADMIN_USER='${OXRM_DEMO_ADMIN_USER}' \
-          OXRM_DEMO_ADMIN_PASSWORD_HASH='${OXRM_DEMO_ADMIN_PASSWORD_HASH}' \
+          OXRM_DEMO_ADMIN_USER='unused' \
+          OXRM_DEMO_ADMIN_PASSWORD_HASH='unused' \
           JOB_SEARCH_DEMO_API_PORT=18511 \
           LINKEDIN_OUTREACH_DEMO_API_PORT=18521 \
-            docker compose -p oxrm-demo-proxy -f infra/compose/docker-compose.demo-proxy.yml up -d --force-recreate
+            docker compose -p oxrm-demo-proxy -f infra/compose/docker-compose.demo-proxy.yml down --remove-orphans || true
+
+          web_root='${OXRM_DEMO_DEPLOY_ROOT}/current/apps/web/dist/web/browser'
+          if [ ! -f "\${web_root}/index.html" ]; then
+            echo "Missing built web index at \${web_root}/index.html" >&2
+            exit 1
+          fi
+
+          if [ -e /srv/oxrm-web ] && [ ! -L /srv/oxrm-web ]; then
+            mv /srv/oxrm-web "/srv/oxrm-web.previous.\$(date -u +%Y%m%dT%H%M%SZ)"
+          fi
+          ln -sfn "\${web_root}" /srv/oxrm-web
+
+          if command -v caddy >/dev/null 2>&1 && [ -f /etc/caddy/Caddyfile ]; then
+            caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+          fi
+          if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet caddy; then
+            systemctl reload caddy
+          fi
+
+          expected_main="\$(sed -n 's/.*src=\"\\(main-[^\"]*\\.js\\)\".*/\\1/p' "\${web_root}/index.html" | head -n 1)"
+          if [ -z "\${expected_main}" ]; then
+            echo "Could not read built main asset from \${web_root}/index.html" >&2
+            exit 1
+          fi
+
+          for host in job-search-demo.oxrm.orkestr.de linkedin-outreach-demo.oxrm.orkestr.de; do
+            for attempt in \$(seq 1 10); do
+              if curl -fsS -H 'Cache-Control: no-cache' "https://\${host}/today?deploy=\${OXRM_DEPLOY_GIT_SHA}" | grep -F "\${expected_main}" >/dev/null; then
+                break
+              fi
+              if [ "\${attempt}" = "10" ]; then
+                echo "Public web bundle for \${host} did not match \${expected_main}" >&2
+                exit 1
+              fi
+              sleep 2
+            done
+          done
           REMOTE
