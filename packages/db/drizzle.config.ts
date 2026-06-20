@@ -5,7 +5,7 @@ export default defineConfig({
   out: "./src/migrations",
   dialect: "postgresql",
   dbCredentials: {
-    url: process.env.DATABASE_URL ?? "postgres://orkestr:orkestr@localhost:5432/orkestr_crm"
+    url: process.env.DATABASE_URL ?? "postgres://orkestr:orkestr@localhost:5432/oxrm"
   }
 });
 

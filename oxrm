@@ -11,7 +11,11 @@ usage() {
 Usage: ./oxrm [--instance name] <command> [args]
 
 Common commands:
-  setup              Create the local env file for the instance
+  init [name] [--template t]
+                      Guided first run: blank, job-search, or outreach
+  codex-demo [--reset] [--check]
+                      Start, seed, and smoke-test the local Codex demo
+  setup [--demo s]   Create the local env file; optionally install one demo scenario
   start              Start Docker containers
   stop               Stop Docker containers
   reset              Stop containers and delete local Docker data for the instance
@@ -20,7 +24,7 @@ Common commands:
   urls               Print local URLs
   ready              Run migrate and baseline seed
   upgrade            Backup, migrate, seed, restart, and smoke-test the instance
-  demo               Seed public-safe demo data
+  demo [scenario]    Seed public-safe demo data: job-search, linkedin-outreach, or codex-demo
   test               Run DB smoke, health, and CLI smoke
   health             Run instance health check
   version            Print local product version without requiring an instance
@@ -30,7 +34,7 @@ Common commands:
 
 Instance commands:
   new <name>         Create a new instance example from demo
-  instance [args]    Pass through to scripts/crm-instance
+  instance [args]    Pass through to scripts/oxrm-instance
 
 Options:
   -i, --instance     Instance name, default: demo
@@ -39,9 +43,17 @@ Compatibility:
   ./ocrm still delegates to ./oxrm, but it is deprecated.
 
 Examples:
-  ./oxrm setup
+  ./oxrm init
+  ./oxrm init client-a --template blank
+  ./oxrm init --template job-search
+  ./oxrm init --template blank
+  ./oxrm codex-demo
+  ./oxrm codex-demo --reset --check
+  ./oxrm setup --demo none
   ./oxrm start
   ./oxrm ready
+  ./oxrm demo
+  ./oxrm demo job-search
   ./oxrm test
   ./oxrm version
   ./oxrm cli mcp:tools
@@ -50,7 +62,7 @@ EOF
 }
 
 run_instance() {
-  scripts/crm-instance "$instance" "$@"
+  scripts/oxrm-instance "$instance" "$@"
 }
 
 print_version() {
@@ -74,6 +86,179 @@ ensure_instance_env() {
   if [[ ! -f "$env_file" && -f "$example_env_file" ]]; then
     run_instance init
   fi
+}
+
+valid_demo_scenario() {
+  case "$1" in
+    none|job-search|linkedin-outreach|codex-demo)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+parse_demo_option() {
+  demo_scenario="__unset"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --demo)
+        if [[ $# -lt 2 ]]; then
+          echo "Missing scenario after --demo" >&2
+          exit 2
+        fi
+        demo_scenario="$2"
+        shift 2
+        ;;
+      --demo=*)
+        demo_scenario="${1#*=}"
+        shift
+        ;;
+      *)
+        echo "Unknown option for setup: $1" >&2
+        exit 2
+        ;;
+    esac
+  done
+}
+
+parse_init_option() {
+  init_template="__unset"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --template|--profile)
+        if [[ $# -lt 2 ]]; then
+          echo "Missing template after $1" >&2
+          exit 2
+        fi
+        init_template="$2"
+        shift 2
+        ;;
+      --template=*|--profile=*)
+        init_template="${1#*=}"
+        shift
+        ;;
+      --demo)
+        if [[ $# -lt 2 ]]; then
+          echo "Missing scenario after --demo" >&2
+          exit 2
+        fi
+        case "$2" in
+          none) init_template="blank" ;;
+          job-search) init_template="job-search" ;;
+          linkedin-outreach) init_template="outreach" ;;
+          *) init_template="$2" ;;
+        esac
+        shift 2
+        ;;
+      --demo=*)
+        case "${1#*=}" in
+          none) init_template="blank" ;;
+          job-search) init_template="job-search" ;;
+          linkedin-outreach) init_template="outreach" ;;
+          *) init_template="${1#*=}" ;;
+        esac
+        shift
+        ;;
+      *)
+        echo "Unknown option for init: $1" >&2
+        exit 2
+        ;;
+    esac
+  done
+}
+
+choose_setup_demo() {
+  if [[ "$demo_scenario" != "__unset" ]]; then
+    return
+  fi
+  demo_scenario=none
+  if [[ -t 0 ]]; then
+    printf 'Demo data? [none/job-search/linkedin-outreach] (none): ' >&2
+    read -r answer || answer=""
+    if [[ -n "$answer" ]]; then
+      demo_scenario="$answer"
+    fi
+  fi
+}
+
+normalize_init_template() {
+  case "$init_template" in
+    ""|"__unset")
+      init_template="blank"
+      ;;
+    blank|none|no-demo)
+      init_template="blank"
+      ;;
+    job|jobs|job-search|job_search)
+      init_template="job-search"
+      ;;
+    outreach|crm|linkedin|linkedin-outreach|linkedin_outreach)
+      init_template="outreach"
+      ;;
+    *)
+      echo "Unknown init template: $init_template" >&2
+      echo "Use blank, job-search, or outreach." >&2
+      exit 2
+      ;;
+  esac
+}
+
+choose_init_template() {
+  if [[ "$init_template" != "__unset" ]]; then
+    normalize_init_template
+    return
+  fi
+  init_template="blank"
+  if [[ -t 0 ]]; then
+    cat >&2 <<'EOF'
+Choose an oXRM workspace:
+  1) Job search: applications, CVs, cover letters, fits, follow-ups
+  2) Outreach / CRM: leads, people, companies, tasks, relationship history
+  3) Blank local workspace: structure only, no synthetic demo records
+EOF
+    printf 'Selection [3]: ' >&2
+    read -r answer || answer=""
+    case "$answer" in
+      1|job|jobs|job-search) init_template="job-search" ;;
+      2|outreach|crm|linkedin|linkedin-outreach) init_template="outreach" ;;
+      ""|3|blank|none) init_template="blank" ;;
+      *) init_template="$answer" ;;
+    esac
+  fi
+  normalize_init_template
+}
+
+init_demo_scenario() {
+  case "$init_template" in
+    job-search) echo "job-search" ;;
+    outreach) echo "linkedin-outreach" ;;
+    blank) echo "none" ;;
+  esac
+}
+
+print_init_next_steps() {
+  scenario="$(init_demo_scenario)"
+  cat <<EOF
+
+oXRM is initialized.
+
+Template: ${init_template}
+Demo scenario: ${scenario}
+
+Next:
+  ./oxrm urls
+  open the Web URL
+  go to /start
+
+Codex prompt:
+  Ask Codex to inspect the Start page, the active playbook, sources, timers, queue, records, and draft-only suggestions. Do not send anything externally.
+EOF
+}
+
+run_codex_demo() {
+  bash scripts/codex-demo.sh "$@"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -109,8 +294,45 @@ case "$command" in
   help)
     usage
     ;;
-  setup|init|install)
+  init)
+    if [[ $# -gt 0 && "$1" != -* ]]; then
+      instance="$1"
+      shift
+    fi
+    parse_init_option "$@"
+    choose_init_template
+    scenario="$(init_demo_scenario)"
     run_instance init
+    ensure_instance_env
+    run_instance up
+    run_instance migrate
+    run_instance seed
+    if [[ "$scenario" != none ]]; then
+      run_instance demo-seed "$scenario"
+    fi
+    run_instance urls
+    print_init_next_steps
+    ;;
+  codex-demo)
+    run_codex_demo "$@"
+    ;;
+  setup|install)
+    parse_demo_option "$@"
+    choose_setup_demo
+    if ! valid_demo_scenario "$demo_scenario"; then
+      echo "Unknown demo scenario: $demo_scenario" >&2
+      echo "Use none, job-search, linkedin-outreach, or codex-demo." >&2
+      exit 2
+    fi
+    run_instance init
+    if [[ "$demo_scenario" != none ]]; then
+      ensure_instance_env
+      run_instance up
+      run_instance migrate
+      run_instance seed
+      run_instance demo-seed "$demo_scenario"
+      run_instance urls
+    fi
     ;;
   start|up)
     ensure_instance_env
@@ -157,7 +379,13 @@ case "$command" in
     run_instance seed
     ;;
   demo|demo-seed)
-    run_instance demo-seed
+    scenario="${1:-job-search}"
+    if ! valid_demo_scenario "$scenario"; then
+      echo "Unknown demo scenario: $scenario" >&2
+      echo "Use none, job-search, linkedin-outreach, or codex-demo." >&2
+      exit 2
+    fi
+    run_instance demo-seed "$scenario"
     ;;
   db-smoke)
     run_instance db-smoke
@@ -190,14 +418,14 @@ case "$command" in
       cp instances/demo.env.example "$example_file"
       echo "Created $example_file. Edit ports and names before starting it."
     fi
-    scripts/crm-instance "$new_instance" init
+    scripts/oxrm-instance "$new_instance" init
     ;;
   instance)
     if [[ $# -lt 2 ]]; then
       echo "Usage: ./oxrm instance <name> <command> [args]" >&2
       exit 2
     fi
-    scripts/crm-instance "$@"
+    scripts/oxrm-instance "$@"
     ;;
   *)
     echo "Unknown command: $command" >&2

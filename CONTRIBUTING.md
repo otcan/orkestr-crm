@@ -1,9 +1,8 @@
 # Contributing
 
-Contributions should preserve the product boundary: oXRM is an MCP-first
-relationship workspace and agent-operable relationship ledger. The repository
-name and some package scopes still use the older `orkestr-crm` name; public
-commands and docs should use `oXRM` and `./oxrm`.
+Contributions should preserve the product boundary: oXRM is a self-hosted
+outreach workspace for high-context outreach. Public commands and docs should
+use `oXRM`, `otcan/oxrm`, and `./oxrm`.
 
 ## Development
 

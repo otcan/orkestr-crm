@@ -1,21 +1,22 @@
 import { CommonModule } from "@angular/common";
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, ViewChild } from "@angular/core";
-import { DetailSelection, EventRow, LeadEditForm, TaskEditForm } from "./models";
+import { DetailSelection, EventRow, LeadEditForm, TaskEditForm, XrmRecordInput } from "./models";
 import { EventDetailComponent } from "./event-detail.component";
 import { LeadDetailComponent } from "./lead-detail.component";
 import { TaskDetailComponent } from "./task-detail.component";
+import { XrmRecordDetailComponent } from "./xrm-record-detail.component";
 
 @Component({
   selector: "oc-detail-panel",
   standalone: true,
-  imports: [CommonModule, EventDetailComponent, LeadDetailComponent, TaskDetailComponent],
+  imports: [CommonModule, EventDetailComponent, LeadDetailComponent, TaskDetailComponent, XrmRecordDetailComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <aside class="detail-panel" [class.empty-panel]="!selection">
       @if (selection) {
         <header>
           <div>
-            <span>{{ selection.kind }}</span>
+            <span>{{ kindLabel }}</span>
             <h2>{{ title }}</h2>
           </div>
           <div class="detail-actions">
@@ -72,11 +73,19 @@ import { TaskDetailComponent } from "./task-detail.component";
           @case ("event") {
             <oc-event-detail [event]="selection.item" />
           }
+          @case ("record") {
+            <oc-xrm-record-detail
+              [record]="selection.item"
+              [saving]="saving"
+              (openRecord)="openRecord.emit($event)"
+              (saveRecord)="saveRecord.emit($event)"
+            />
+          }
         }
       } @else {
         <div class="detail-empty">
           <h2>Select an item</h2>
-          <p>Click a lead, task, or event to inspect it here.</p>
+          <p>Click a record, queue item, timeline event, or saved-view row to inspect it here.</p>
         </div>
       }
     </aside>
@@ -92,6 +101,8 @@ export class DetailPanelComponent {
   @Output() close = new EventEmitter<void>();
   @Output() saveLead = new EventEmitter<LeadEditForm>();
   @Output() saveTask = new EventEmitter<TaskEditForm>();
+  @Output() saveRecord = new EventEmitter<XrmRecordInput>();
+  @Output() openRecord = new EventEmitter<string>();
 
   @ViewChild(LeadDetailComponent) leadDetail?: LeadDetailComponent;
   @ViewChild(TaskDetailComponent) taskDetail?: TaskDetailComponent;
@@ -107,6 +118,26 @@ export class DetailPanelComponent {
     if (selection.kind === "task") {
       return selection.item.title;
     }
+    if (selection.kind === "record") {
+      return selection.item.displayName;
+    }
     return selection.item.subject || selection.item.type;
+  }
+
+  get kindLabel() {
+    const selection = this.selection;
+    if (!selection) {
+      return "";
+    }
+    if (selection.kind === "record") {
+      return selection.item.objectType?.label || "record";
+    }
+    if (selection.kind === "lead") {
+      return "lead";
+    }
+    if (selection.kind === "task") {
+      return "queue item";
+    }
+    return "timeline event";
   }
 }

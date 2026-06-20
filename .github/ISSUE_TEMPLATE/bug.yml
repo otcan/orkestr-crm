@@ -25,7 +25,7 @@ body:
       placeholder: |
         1. ./oxrm start
         2. ./oxrm ready
-        3. ./oxrm demo
+        3. ./oxrm demo job-search
         4. ./oxrm test
     validations:
       required: true

@@ -1,4 +1,4 @@
-# ADR 0001: Build Orkestr CRM Instead Of Adopting An Existing CRM
+# ADR 0001: Build oXRM Instead Of Adopting An Existing CRM
 
 ## Status
 
@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-Orkestr CRM has specific hard requirements:
+oXRM has specific hard requirements:
 
 - MCP-first and agent-first operation.
 - Angular frontend with Signals.
@@ -30,7 +30,7 @@ Market scan found useful adjacent projects:
 
 ## Decision
 
-Build Orkestr CRM as a focused greenfield TypeScript monorepo.
+Build oXRM as a focused greenfield TypeScript monorepo.
 
 Use existing projects as references and benchmarks, not as the base application.
 
@@ -68,7 +68,7 @@ Negative:
 
 ## Practical Plan
 
-1. Build Orkestr CRM greenfield.
+1. Build oXRM greenfield.
 2. Clone or run Relaticle as the MCP-first CRM benchmark.
 3. Inspect Twenty for object/workflow modeling ideas.
 4. Inspect OpenOutreach for LinkedIn/email outreach mechanics.

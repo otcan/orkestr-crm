@@ -4,7 +4,9 @@ Use this checklist for publication readiness and each tagged release.
 
 ## Metadata
 
+- [ ] README opens with self-hosted outreach, not MCP/XRM theory.
 - [ ] README positions the project as oXRM while accurately describing shipped outreach and job-search preset behavior.
+- [ ] Repository URL is `github.com/otcan/oxrm`.
 - [ ] Operator docs use `./oxrm`; `./ocrm` is documented only as deprecated compatibility.
 - [ ] Product version is updated in package metadata and `OXRM_PRODUCT_VERSION`.
 - [ ] `package.json` has description, license, repository, homepage, bugs, and keywords.
@@ -30,19 +32,39 @@ Use this checklist for publication readiness and each tagged release.
 ## Verification
 
 - [ ] `./oxrm ready`
-- [ ] `./oxrm demo`
+- [ ] `./oxrm demo job-search`
+- [ ] `./oxrm demo linkedin-outreach`
 - [ ] `./oxrm test`
 - [ ] `./oxrm upgrade --skip-backup` on a disposable local instance.
 - [ ] `./oxrm upgrade` on any production-bound instance with backup credentials configured.
 - [ ] `./oxrm urls`
 - [ ] `./oxrm tools`
 - [ ] `./oxrm version`
+- [ ] `bash scripts/codex-demo.sh`
+- [ ] `./oxrm cli mcp:read crm://queue/today`
+- [ ] `./oxrm cli mcp:call crm.search_leads --input '{"query":"founder"}'`
 - [ ] `./ocrm version` prints a deprecation warning and delegates successfully.
 - [ ] `xrm.list_views` returns outreach and job-search views.
-- [ ] `xrm.run_view` returns rows for `job_search.applications` after seed.
+- [ ] `xrm.run_view` returns rows for `job_search.applications` after `./oxrm demo job-search`.
 - [ ] Generic record timeline verification covers a job-search application with linked task and event.
 - [ ] Contributor CI is green for `pnpm install --frozen-lockfile`, `pnpm typecheck`, `pnpm build`, migration generation, and Compose config.
 - [ ] Backup verification is green for any production-bound instance.
+
+## Launch Gate
+
+- [ ] repo renamed to `oxrm`
+- [ ] README starts with self-hosted outreach, not MCP/XRM theory
+- [ ] quickstart works from fresh clone
+- [ ] `bash scripts/codex-demo.sh` works
+- [ ] Codex prompt exists
+- [ ] job-search demo exists
+- [ ] customer-outreach demo exists
+- [ ] demo uses synthetic data only
+- [ ] no public docs imply scraping or spam
+- [ ] queue, tasks, records, and events are visible in the UI
+- [ ] local export path exists or is clearly marked as upcoming
+- [ ] release is tagged
+- [ ] launch posts are ready
 
 ## Release Notes
 

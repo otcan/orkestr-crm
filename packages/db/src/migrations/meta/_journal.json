@@ -43,6 +43,20 @@
       "when": 1781606248507,
       "tag": "0005_third_sharon_carter",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1781878464322,
+      "tag": "0006_ambitious_kylun",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1781947854054,
+      "tag": "0007_heavy_black_bird",
+      "breakpoints": true
     }
   ]
 }

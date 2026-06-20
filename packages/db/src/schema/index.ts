@@ -66,13 +66,6 @@ export const integrationStatus = pgEnum("integration_status", [
 ]);
 export const syncStatus = pgEnum("sync_status", ["running", "succeeded", "failed"]);
 
-export const agentType = pgEnum("agent_type", [
-  "crm_operator",
-  "code_contributor",
-  "connector_worker",
-  "scheduler_worker"
-]);
-
 export const agentStatus = pgEnum("agent_status", ["active", "paused", "archived"]);
 export const approvalStatus = pgEnum("approval_status", ["pending", "approved", "rejected", "expired"]);
 export const backupStatus = pgEnum("backup_status", ["running", "succeeded", "failed"]);
@@ -100,9 +93,12 @@ const timestamps = {
 export const agents = pgTable("agents", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
-  type: agentType("type").notNull(),
+  type: text("type").notNull().default("operator"),
   status: agentStatus("status").notNull().default("active"),
   defaultBranchPrefix: text("default_branch_prefix"),
+  capabilities: jsonb("capabilities").notNull().default(sql`'[]'::jsonb`),
+  runtimeConfig: jsonb("runtime_config").notNull().default(sql`'{}'::jsonb`),
+  metadata: jsonb("metadata").notNull().default(sql`'{}'::jsonb`),
   ...timestamps
 });
 
@@ -382,12 +378,55 @@ export const xrmFieldDefinitions = pgTable(
     dataType: text("data_type").notNull().default("text"),
     required: boolean("required").notNull().default(false),
     indexed: boolean("indexed").notNull().default(false),
+    searchable: boolean("searchable").notNull().default(false),
+    displayOrder: integer("display_order").notNull().default(0),
+    summaryRank: integer("summary_rank"),
+    isPrimary: boolean("is_primary").notNull().default(false),
+    options: jsonb("options").notNull().default(sql`'[]'::jsonb`),
     config: jsonb("config").notNull().default(sql`'{}'::jsonb`),
     ...timestamps
   },
   (table) => [
     uniqueIndex("xrm_field_definitions_object_key_unique").on(table.objectTypeId, table.key),
     index("xrm_field_definitions_object_idx").on(table.objectTypeId)
+  ]
+);
+
+export const xrmSemanticFields = pgTable(
+  "xrm_semantic_fields",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    key: text("key").notNull(),
+    label: text("label").notNull(),
+    dataType: text("data_type").notNull().default("text"),
+    description: text("description"),
+    metadata: jsonb("metadata").notNull().default(sql`'{}'::jsonb`),
+    ...timestamps
+  },
+  (table) => [uniqueIndex("xrm_semantic_fields_key_unique").on(table.key)]
+);
+
+export const xrmFieldMappings = pgTable(
+  "xrm_field_mappings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    objectTypeId: uuid("object_type_id")
+      .notNull()
+      .references(() => xrmObjectTypes.id, { onDelete: "cascade" }),
+    fieldDefinitionId: uuid("field_definition_id").references(() => xrmFieldDefinitions.id, { onDelete: "cascade" }),
+    fieldKey: text("field_key").notNull(),
+    semanticFieldId: uuid("semantic_field_id")
+      .notNull()
+      .references(() => xrmSemanticFields.id, { onDelete: "cascade" }),
+    confidence: integer("confidence").notNull().default(100),
+    transform: jsonb("transform").notNull().default(sql`'{}'::jsonb`),
+    metadata: jsonb("metadata").notNull().default(sql`'{}'::jsonb`),
+    ...timestamps
+  },
+  (table) => [
+    uniqueIndex("xrm_field_mappings_object_field_semantic_unique").on(table.objectTypeId, table.fieldKey, table.semanticFieldId),
+    index("xrm_field_mappings_object_idx").on(table.objectTypeId),
+    index("xrm_field_mappings_semantic_idx").on(table.semanticFieldId)
   ]
 );
 
@@ -525,6 +564,11 @@ export const viewDefinitions = pgTable(
     columns: jsonb("columns").notNull().default(sql`'[]'::jsonb`),
     filters: jsonb("filters").notNull().default(sql`'[]'::jsonb`),
     sort: jsonb("sort").notNull().default(sql`'[]'::jsonb`),
+    groupBy: text("group_by"),
+    placement: text("placement").notNull().default("sidebar"),
+    displayOrder: integer("display_order").notNull().default(0),
+    audience: text("audience").notNull().default("default"),
+    visibleWhen: jsonb("visible_when").notNull().default(sql`'{}'::jsonb`),
     isDefault: boolean("is_default").notNull().default(false),
     createdByAgentId: uuid("created_by_agent_id").references(() => agents.id),
     ...timestamps
@@ -533,6 +577,30 @@ export const viewDefinitions = pgTable(
     uniqueIndex("view_definitions_key_unique").on(table.key),
     index("view_definitions_object_type_idx").on(table.objectType),
     index("view_definitions_template_idx").on(table.templateKey, table.objectType)
+  ]
+);
+
+export const xrmFiles = pgTable(
+  "xrm_files",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    recordId: uuid("record_id")
+      .notNull()
+      .references(() => xrmRecords.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull().default("document"),
+    title: text("title").notNull(),
+    path: text("path").notNull(),
+    mimeType: text("mime_type"),
+    size: integer("size"),
+    checksum: text("checksum"),
+    metadata: jsonb("metadata").notNull().default(sql`'{}'::jsonb`),
+    createdByAgentId: uuid("created_by_agent_id").references(() => agents.id),
+    ...timestamps
+  },
+  (table) => [
+    uniqueIndex("xrm_files_record_path_unique").on(table.recordId, table.path),
+    index("xrm_files_record_idx").on(table.recordId),
+    index("xrm_files_kind_idx").on(table.kind)
   ]
 );
 
@@ -754,6 +822,7 @@ export const flowStepRelations = relations(flowSteps, ({ one }) => ({
 
 export const xrmObjectTypeRelations = relations(xrmObjectTypes, ({ many }) => ({
   fields: many(xrmFieldDefinitions),
+  fieldMappings: many(xrmFieldMappings),
   records: many(xrmRecords),
   sourceRelationshipTypes: many(xrmRelationshipTypes, { relationName: "sourceObjectType" }),
   targetRelationshipTypes: many(xrmRelationshipTypes, { relationName: "targetObjectType" })
@@ -763,11 +832,25 @@ export const xrmFieldDefinitionRelations = relations(xrmFieldDefinitions, ({ one
   objectType: one(xrmObjectTypes, { fields: [xrmFieldDefinitions.objectTypeId], references: [xrmObjectTypes.id] })
 }));
 
+export const xrmSemanticFieldRelations = relations(xrmSemanticFields, ({ many }) => ({
+  mappings: many(xrmFieldMappings)
+}));
+
+export const xrmFieldMappingRelations = relations(xrmFieldMappings, ({ one }) => ({
+  objectType: one(xrmObjectTypes, { fields: [xrmFieldMappings.objectTypeId], references: [xrmObjectTypes.id] }),
+  fieldDefinition: one(xrmFieldDefinitions, {
+    fields: [xrmFieldMappings.fieldDefinitionId],
+    references: [xrmFieldDefinitions.id]
+  }),
+  semanticField: one(xrmSemanticFields, { fields: [xrmFieldMappings.semanticFieldId], references: [xrmSemanticFields.id] })
+}));
+
 export const xrmRecordRelations = relations(xrmRecords, ({ one, many }) => ({
   objectType: one(xrmObjectTypes, { fields: [xrmRecords.objectTypeId], references: [xrmObjectTypes.id] }),
   ownerAgent: one(agents, { fields: [xrmRecords.ownerAgentId], references: [agents.id] }),
   sourceRelationships: many(xrmRecordRelationships, { relationName: "sourceRecord" }),
   targetRelationships: many(xrmRecordRelationships, { relationName: "targetRecord" }),
+  files: many(xrmFiles),
   tasks: many(tasks),
   activities: many(activities)
 }));
@@ -840,6 +923,11 @@ export const viewDefinitionRelations = relations(viewDefinitions, ({ one }) => (
   createdByAgent: one(agents, { fields: [viewDefinitions.createdByAgentId], references: [agents.id] })
 }));
 
+export const xrmFileRelations = relations(xrmFiles, ({ one }) => ({
+  record: one(xrmRecords, { fields: [xrmFiles.recordId], references: [xrmRecords.id] }),
+  createdByAgent: one(agents, { fields: [xrmFiles.createdByAgentId], references: [agents.id] })
+}));
+
 export type Company = typeof companies.$inferSelect;
 export type NewCompany = typeof companies.$inferInsert;
 export type Person = typeof people.$inferSelect;
@@ -860,12 +948,18 @@ export type XrmObjectType = typeof xrmObjectTypes.$inferSelect;
 export type NewXrmObjectType = typeof xrmObjectTypes.$inferInsert;
 export type XrmFieldDefinition = typeof xrmFieldDefinitions.$inferSelect;
 export type NewXrmFieldDefinition = typeof xrmFieldDefinitions.$inferInsert;
+export type XrmSemanticField = typeof xrmSemanticFields.$inferSelect;
+export type NewXrmSemanticField = typeof xrmSemanticFields.$inferInsert;
+export type XrmFieldMapping = typeof xrmFieldMappings.$inferSelect;
+export type NewXrmFieldMapping = typeof xrmFieldMappings.$inferInsert;
 export type XrmRecord = typeof xrmRecords.$inferSelect;
 export type NewXrmRecord = typeof xrmRecords.$inferInsert;
 export type XrmRelationshipType = typeof xrmRelationshipTypes.$inferSelect;
 export type NewXrmRelationshipType = typeof xrmRelationshipTypes.$inferInsert;
 export type XrmRecordRelationship = typeof xrmRecordRelationships.$inferSelect;
 export type NewXrmRecordRelationship = typeof xrmRecordRelationships.$inferInsert;
+export type XrmFile = typeof xrmFiles.$inferSelect;
+export type NewXrmFile = typeof xrmFiles.$inferInsert;
 export type ViewDefinition = typeof viewDefinitions.$inferSelect;
 export type NewViewDefinition = typeof viewDefinitions.$inferInsert;
 export type IntegrationSyncRun = typeof integrationSyncRuns.$inferSelect;

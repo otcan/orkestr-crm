@@ -32,9 +32,32 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Check shell scripts
+        run: bash -n oxrm ocrm scripts/oxrm-instance scripts/oxrm-internal scripts/codex-demo.sh scripts/deploy-live-demo scripts/smoke-user-journey.sh
+
+      - name: Launch naming and docs guard
+        run: |
+          test ! -e crm
+          test -x oxrm
+          test -x ocrm
+          test -x scripts/oxrm-instance
+          test -x scripts/oxrm-internal
+          test -f docs/migrations/v0.2-to-v0.3.md
+          test -f .codex/config.toml
+          test -f AGENTS.md
+          test -f docs/assets/oxrm-dashboard.png
+          test "$(wc -l < README.md)" -le 200
+          ! rg -n "otcan/orkestr-crm|@orkestr-crm|scripts/crm|orkestr-crm|orkestr_crm|ORKESTR_HOST|ORKESTR_ADMIN|backups@orkestr" \
+            --glob '!node_modules/**' \
+            --glob '!apps/web/dist/**' \
+            --glob '!dist/**' \
+            --glob '!.github/workflows/ci.yml' \
+            --glob '!docs/migrations/v0.2-to-v0.3.md' \
+            --glob '!ocrm'
+
       - name: Check built package exports
         run: |
-          pnpm --filter @orkestr-crm/api exec node --input-type=module -e "await import('@orkestr-crm/shared'); await import('@orkestr-crm/db'); await import('@orkestr-crm/core');"
+          pnpm --filter @oxrm/api exec node --input-type=module -e "await import('@oxrm/shared'); await import('@oxrm/db'); await import('@oxrm/core');"
 
       - name: Check migration generation
         run: |
@@ -43,6 +66,15 @@ jobs:
 
       - name: Validate Compose
         run: docker compose -f docker-compose.yml -f infra/compose/docker-compose.prod.yml config
+
+      - name: Validate public demo Compose
+        run: |
+          POSTGRES_DB=oxrm_ci \
+          POSTGRES_USER=oxrm_ci \
+          POSTGRES_PASSWORD=ci-password \
+          HOST_API_PORT=18311 \
+          HOST_POSTGRES_PORT=18313 \
+          docker compose -f infra/compose/docker-compose.public-demo.yml config
 
   docker-demo:
     needs: static
@@ -67,13 +99,8 @@ jobs:
       - name: Prepare demo env
         run: cp instances/demo.env.example instances/demo.local.env
 
-      - name: Start and seed demo stack
-        run: |
-          ./oxrm start
-          ./oxrm ready
-          ./oxrm demo
-          ./oxrm test
-          ./oxrm urls
+      - name: Start and seed Codex demo stack
+        run: ./oxrm codex-demo --check
 
       - name: HTTP smoke
         run: |
@@ -86,6 +113,9 @@ jobs:
           ./oxrm cli health
           ./oxrm tools
           ./oxrm cli mcp:read crm://queue/today
+
+      - name: Fresh non-demo user journey smoke
+        run: bash scripts/smoke-user-journey.sh
 
       - name: Stop demo stack
         if: always()
@@ -103,4 +133,82 @@ jobs:
         run: |
           docker run --rm \
             -v "$PWD/infra/proxy/Caddyfile:/etc/caddy/Caddyfile:ro" \
-            caddy:2 sh -lc 'HASH="$(caddy hash-password --plaintext ci-password)" && ORKESTR_HOST=:8080 ORKESTR_ADMIN_USER=ci ORKESTR_ADMIN_PASSWORD_HASH="$HASH" caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile'
+            caddy:2 sh -lc 'HASH="$(caddy hash-password --plaintext ci-password)" && OXRM_HOST=:8080 OXRM_ADMIN_USER=ci OXRM_ADMIN_PASSWORD_HASH="$HASH" caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile'
+
+      - name: Validate demo Caddy config
+        run: |
+          docker run --rm \
+            -v "$PWD/infra/proxy/Caddyfile.demos:/etc/caddy/Caddyfile:ro" \
+            caddy:2 sh -lc 'HASH="$(caddy hash-password --plaintext ci-password)" && OXRM_DEMO_ADMIN_USER=ci OXRM_DEMO_ADMIN_PASSWORD_HASH="$HASH" JOB_SEARCH_DEMO_API_PORT=18311 LINKEDIN_OUTREACH_DEMO_API_PORT=18321 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile'
+
+  deploy-live-demos:
+    needs:
+      - static
+      - docker-demo
+      - proxy-smoke
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: live-demos
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Configure SSH
+        env:
+          OXRM_DEMO_SSH_HOST: ${{ secrets.OXRM_DEMO_SSH_HOST }}
+          OXRM_DEMO_SSH_PORT: ${{ secrets.OXRM_DEMO_SSH_PORT }}
+          OXRM_DEMO_SSH_PRIVATE_KEY: ${{ secrets.OXRM_DEMO_SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$OXRM_DEMO_SSH_PRIVATE_KEY" > ~/.ssh/oxrm-demo
+          chmod 600 ~/.ssh/oxrm-demo
+          ssh-keyscan -p "${OXRM_DEMO_SSH_PORT:-22}" "$OXRM_DEMO_SSH_HOST" >> ~/.ssh/known_hosts
+
+      - name: Copy checkout to demo host
+        env:
+          OXRM_DEMO_SSH_HOST: ${{ secrets.OXRM_DEMO_SSH_HOST }}
+          OXRM_DEMO_SSH_USER: ${{ secrets.OXRM_DEMO_SSH_USER }}
+          OXRM_DEMO_SSH_PORT: ${{ secrets.OXRM_DEMO_SSH_PORT }}
+          OXRM_DEMO_DEPLOY_ROOT: ${{ secrets.OXRM_DEMO_DEPLOY_ROOT }}
+        run: |
+          port="${OXRM_DEMO_SSH_PORT:-22}"
+          remote="${OXRM_DEMO_SSH_USER}@${OXRM_DEMO_SSH_HOST}"
+          release_dir="${OXRM_DEMO_DEPLOY_ROOT}/releases/${GITHUB_SHA}"
+          ssh -i ~/.ssh/oxrm-demo -p "$port" "$remote" "rm -rf '$release_dir' && mkdir -p '$release_dir'"
+          tar --exclude=.git --exclude=node_modules --exclude=.pnpm-store -czf - . \
+            | ssh -i ~/.ssh/oxrm-demo -p "$port" "$remote" "tar -xzf - -C '$release_dir' && ln -sfn '$release_dir' '${OXRM_DEMO_DEPLOY_ROOT}/current'"
+
+      - name: Deploy live demos
+        env:
+          OXRM_DEMO_SSH_HOST: ${{ secrets.OXRM_DEMO_SSH_HOST }}
+          OXRM_DEMO_SSH_USER: ${{ secrets.OXRM_DEMO_SSH_USER }}
+          OXRM_DEMO_SSH_PORT: ${{ secrets.OXRM_DEMO_SSH_PORT }}
+          OXRM_DEMO_DEPLOY_ROOT: ${{ secrets.OXRM_DEMO_DEPLOY_ROOT }}
+          OXRM_DEMO_POSTGRES_PASSWORD: ${{ secrets.OXRM_DEMO_POSTGRES_PASSWORD }}
+          OXRM_DEMO_ADMIN_USER: ${{ secrets.OXRM_DEMO_ADMIN_USER }}
+          OXRM_DEMO_ADMIN_PASSWORD_HASH: ${{ secrets.OXRM_DEMO_ADMIN_PASSWORD_HASH }}
+        run: |
+          port="${OXRM_DEMO_SSH_PORT:-22}"
+          remote="${OXRM_DEMO_SSH_USER}@${OXRM_DEMO_SSH_HOST}"
+          deployed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          ssh -i ~/.ssh/oxrm-demo -p "$port" "$remote" "bash -se" <<REMOTE
+          set -euo pipefail
+          cd '${OXRM_DEMO_DEPLOY_ROOT}/current'
+          corepack enable
+          pnpm install --frozen-lockfile
+          export OXRM_DEMO_POSTGRES_PASSWORD='${OXRM_DEMO_POSTGRES_PASSWORD}'
+          export OXRM_DEPLOY_VERSION='${GITHUB_RUN_NUMBER}.${GITHUB_SHA}'
+          export OXRM_DEPLOY_GIT_SHA='${GITHUB_SHA}'
+          export OXRM_DEPLOY_GIT_REF='${GITHUB_REF_NAME}'
+          export OXRM_DEPLOY_GITHUB_RUN_ID='${GITHUB_RUN_ID}'
+          export OXRM_DEPLOY_GITHUB_RUN_NUMBER='${GITHUB_RUN_NUMBER}'
+          export OXRM_DEPLOYED_AT='${deployed_at}'
+          scripts/deploy-live-demo job-search-demo job-search-demo.oxrm.orkestr.de job_search 18510 18511 18512 18513 18514
+          scripts/deploy-live-demo linkedin-outreach-demo linkedin-outreach-demo.oxrm.orkestr.de outreach 18520 18521 18522 18523 18524
+          OXRM_DEMO_ADMIN_USER='${OXRM_DEMO_ADMIN_USER}' \
+          OXRM_DEMO_ADMIN_PASSWORD_HASH='${OXRM_DEMO_ADMIN_PASSWORD_HASH}' \
+          JOB_SEARCH_DEMO_API_PORT=18511 \
+          LINKEDIN_OUTREACH_DEMO_API_PORT=18521 \
+            docker compose -p oxrm-demo-proxy -f infra/compose/docker-compose.demo-proxy.yml up -d
+          REMOTE

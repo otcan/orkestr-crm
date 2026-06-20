@@ -25,17 +25,17 @@ cd orkestr
 
 ## oXRM
 
-MCP-first relationship workspace with synthetic demo presets for outreach and
-job search, built for agent-assisted workflows.
+Self-hosted outreach workspace for job search, customer outreach, partnerships,
+and founder-led sales.
 
 Quickstart:
 
 ```bash
-git clone https://github.com/otcan/orkestr-crm.git
-cd orkestr-crm
+git clone https://github.com/otcan/oxrm.git
+cd oxrm
 ./oxrm start
 ./oxrm ready
-./oxrm demo
+./oxrm demo job-search
 ./oxrm test
 ./oxrm urls
 ```
@@ -49,5 +49,5 @@ public internet.
 ## Links
 
 - Orkestr: https://github.com/otcan/orkestr
-- oXRM: https://github.com/otcan/orkestr-crm
+- oXRM: https://github.com/otcan/oxrm
 - ork-linkedin: https://github.com/otcan/ork-linkedin

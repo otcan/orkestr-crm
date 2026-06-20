@@ -3,6 +3,8 @@ export interface McpConfig {
   port: number;
   databaseUrl: string;
   logLevel: string;
+  nodeEnv: string;
+  backupsRequired: boolean;
 }
 
 export function loadConfig(): McpConfig {
@@ -11,10 +13,16 @@ export function loadConfig(): McpConfig {
     throw new Error("DATABASE_URL is required");
   }
 
+  const nodeEnv = process.env.NODE_ENV ?? "development";
+  const backupsRequired =
+    process.env.OXRM_BACKUP_REQUIRED === undefined ? nodeEnv === "production" : process.env.OXRM_BACKUP_REQUIRED === "true";
+
   return {
     host: process.env.MCP_HOST ?? "0.0.0.0",
     port: Number(process.env.MCP_PORT ?? 18182),
     databaseUrl,
-    logLevel: process.env.LOG_LEVEL ?? "info"
+    logLevel: process.env.LOG_LEVEL ?? "info",
+    nodeEnv,
+    backupsRequired
   };
 }

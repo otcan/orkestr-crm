@@ -1,5 +1,19 @@
 import { Injectable } from "@angular/core";
-import { EventRow, HealthResponse, LeadEditForm, LeadRow, TaskEditForm, TaskRow, ViewDefinition, ViewRunResult } from "./models";
+import {
+  EventRow,
+  HealthResponse,
+  LeadEditForm,
+  LeadRow,
+  TaskEditForm,
+  TaskRow,
+  ViewDefinition,
+  ViewRunOptions,
+  ViewRunResult,
+  WorkspaceLayout,
+  XrmObjectType,
+  XrmRecord,
+  XrmRecordInput
+} from "./models";
 
 @Injectable({ providedIn: "root" })
 export class CrmApiService {
@@ -64,8 +78,70 @@ export class CrmApiService {
     return this.request<ViewDefinition[]>(`/api/views?${query.toString()}`);
   }
 
-  async runView(key: string, limit = 100) {
-    return this.request<ViewRunResult>(`/api/views/${encodeURIComponent(key)}/run?limit=${limit}`);
+  async getWorkspace(templateKey = "job_search") {
+    return this.request<WorkspaceLayout>(`/api/xrm/workspace?templateKey=${encodeURIComponent(templateKey)}`);
+  }
+
+  async runView(key: string, options: ViewRunOptions | number = {}) {
+    const normalized = typeof options === "number" ? { limit: options } : options;
+    const query = new URLSearchParams({ limit: String(normalized.limit ?? 100) });
+    if (normalized.q) {
+      query.set("q", normalized.q);
+    }
+    if (normalized.sort) {
+      query.set("sort", normalized.sort);
+      query.set("dir", normalized.dir ?? "asc");
+    }
+    if (normalized.filters?.length) {
+      query.set("filters", JSON.stringify(normalized.filters));
+    }
+    return this.request<ViewRunResult>(`/api/views/${encodeURIComponent(key)}/run?${query.toString()}`);
+  }
+
+  async listObjectTypes(templateKey?: string) {
+    const query = new URLSearchParams({ active: "true", limit: "100" });
+    if (templateKey) {
+      query.set("templateKey", templateKey);
+    }
+    return this.request<XrmObjectType[]>(`/api/xrm/object-types?${query.toString()}`);
+  }
+
+  async listXrmRecords(input: { objectType?: string; q?: string; includeDeleted?: boolean; limit?: number } = {}) {
+    const query = new URLSearchParams({ limit: String(input.limit ?? 100) });
+    if (input.objectType) {
+      query.set("objectType", input.objectType);
+    }
+    if (input.q) {
+      query.set("q", input.q);
+    }
+    if (input.includeDeleted) {
+      query.set("includeDeleted", "true");
+    }
+    return this.request<XrmRecord[]>(`/api/xrm/records?${query.toString()}`);
+  }
+
+  async getXrmRecord(id: string) {
+    return this.request<XrmRecord>(`/api/xrm/records/${encodeURIComponent(id)}`);
+  }
+
+  async createXrmRecord(input: XrmRecordInput) {
+    return this.request<XrmRecord>("/api/xrm/records", {
+      method: "POST",
+      body: JSON.stringify(cleanPayload(input))
+    });
+  }
+
+  async updateXrmRecord(input: XrmRecordInput) {
+    return this.request<XrmRecord>("/api/xrm/records", {
+      method: "POST",
+      body: JSON.stringify(cleanPayload(input))
+    });
+  }
+
+  async deleteXrmRecord(id: string) {
+    return this.request<{ deleted: boolean; recordId: string }>(`/api/xrm/records/${encodeURIComponent(id)}`, {
+      method: "DELETE"
+    });
   }
 
   private async request<T>(path: string, init: RequestInit = {}) {

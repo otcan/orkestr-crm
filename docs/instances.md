@@ -34,7 +34,7 @@ Common Docker instance commands:
 ```bash
 ./oxrm start
 ./oxrm ready
-./oxrm demo
+./oxrm demo job-search
 ./oxrm test
 ./oxrm tools
 ./oxrm backup
@@ -45,7 +45,9 @@ To add another local instance, run `./oxrm new <name>`, choose unique host ports
 
 Keep per-instance `.local.env` files private. They may contain database passwords, backup repository names, and GitHub tokens.
 
-`seed` creates baseline product configuration. `demo-seed` adds synthetic demo leads, assignments, and activities that are safe to use in screenshots, smoke tests, and public walkthroughs.
+`seed` creates baseline product configuration. `demo-seed` adds one explicit
+synthetic scenario, either `job-search` or `linkedin-outreach`, that is safe to
+use in screenshots, smoke tests, and public walkthroughs.
 
 Lead and event writes normalize people, companies, domains, and email addresses before inserting records. Use `./oxrm cli -- event:record ...` for idempotent message/email/connection-request timeline writes, and `./oxrm tools` to inspect the MCP task, identity, and event tools exposed to agents.
 
@@ -68,8 +70,9 @@ The default flow is:
 5. Build the app image from the current checkout.
 6. Run migrations once.
 7. Run idempotent baseline seed.
-8. Restart API, MCP, web, worker, scheduler, and backup services.
-9. Run health and smoke checks.
+8. Optionally run one explicit demo scenario when `--demo` is provided.
+9. Restart API, MCP, web, worker, scheduler, and backup services.
+10. Run health and smoke checks.
 
 For disposable local instances without backup credentials, use:
 
@@ -77,4 +80,7 @@ For disposable local instances without backup credentials, use:
 ./oxrm -i demo upgrade --skip-backup
 ```
 
-Do not use `--skip-backup` for production-bound instances. Other local-only flags are `--skip-smoke`, `--skip-seed`, and `--skip-build`.
+Do not use `--skip-backup` for production-bound instances. Other local-only
+flags are `--skip-smoke`, `--skip-seed`, `--skip-build`, and
+`--demo job-search|linkedin-outreach` when you intentionally want to load a demo
+during an upgrade.

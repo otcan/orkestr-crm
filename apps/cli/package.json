@@ -1,10 +1,10 @@
 {
-  "name": "@orkestr-crm/cli",
+  "name": "@oxrm/cli",
   "version": "0.2.1",
   "private": true,
   "type": "module",
   "bin": {
-    "crm": "./dist/index.js"
+    "oxrm-cli": "./dist/index.js"
   },
   "scripts": {
     "dev": "tsx src/index.ts",
@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "@orkestr-crm/shared": "workspace:*",
+    "@oxrm/shared": "workspace:*",
     "zod": "^4.0.0"
   },
   "devDependencies": {

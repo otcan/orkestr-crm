@@ -1,5 +1,5 @@
 {
-  "name": "@orkestr-crm/backup",
+  "name": "@oxrm/backup",
   "version": "0.2.1",
   "private": true,
   "type": "module",
@@ -11,7 +11,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@orkestr-crm/db": "workspace:*",
+    "@oxrm/db": "workspace:*",
     "drizzle-orm": "^0.45.0"
   },
   "devDependencies": {

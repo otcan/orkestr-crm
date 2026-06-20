@@ -18,16 +18,20 @@ import {
   taskEvents,
   tasks,
   viewDefinitions,
+  xrmFieldMappings,
   xrmFieldDefinitions,
+  xrmFiles,
   xrmObjectTypes,
   xrmRecordRelationships,
   xrmRecords,
   xrmRelationshipTypes,
+  xrmSemanticFields,
   type Database
-} from "@orkestr-crm/db";
+} from "@oxrm/db";
 import {
   createXrmObjectTypeSchema,
   createXrmRelationshipTypeSchema,
+  createXrmFileSchema,
   createActivitySchema,
   createAssignmentSchema,
   createLeadSchema,
@@ -35,21 +39,26 @@ import {
   OXRM_PRODUCT_NAME,
   OXRM_PRODUCT_SLUG,
   OXRM_PRODUCT_VERSION,
+  oxrmDeploymentInfoFromEnv,
   linkXrmRecordsSchema,
   listXrmRelationshipsSchema,
   recordOutreachEventSchema,
   searchXrmRecordsSchema,
+  upsertXrmFieldMappingSchema,
   updateTaskSchema,
   updateAssignmentSchema,
   updateLeadSchema,
   updateXrmObjectTypeSchema,
+  upsertXrmSemanticFieldSchema,
+  workspaceLayoutSchema,
   upsertXrmRecordSchema
-} from "@orkestr-crm/shared";
-import { and, desc, eq, gte, ilike, inArray, isNull, lte, or } from "drizzle-orm";
+} from "@oxrm/shared";
+import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, or } from "drizzle-orm";
 import { z } from "zod";
 
 export interface ServiceContext {
   db: Database;
+  backupsRequired?: boolean | undefined;
 }
 
 type Tx = Parameters<Parameters<Database["transaction"]>[0]>[0];
@@ -62,7 +71,7 @@ const viewObjectTypeSchema = z
   .min(2)
   .max(96)
   .regex(/^[a-z][a-z0-9_.-]*$/);
-const viewLayoutSchema = z.enum(["table", "cards", "timeline"]);
+const viewLayoutSchema = z.enum(["table", "cards", "timeline", "board", "queue"]);
 const viewOperatorSchema = z.enum(["equals", "contains", "starts_with", "is_empty", "is_not_empty", "before", "after"]);
 const viewDirectionSchema = z.enum(["asc", "desc"]);
 const templateKeySchema = z
@@ -101,6 +110,11 @@ const viewDefinitionInputSchema = z.object({
   columns: z.array(viewFieldSchema).default([]),
   filters: z.array(viewFilterSchema).default([]),
   sort: z.array(viewSortSchema).default([]),
+  groupBy: viewFieldSchema.optional(),
+  placement: z.enum(["summary", "main", "secondary", "sidebar", "hidden"]).default("sidebar"),
+  displayOrder: z.number().int().min(0).default(0),
+  audience: z.enum(["default", "power", "hidden", "mcp"]).default("default"),
+  visibleWhen: z.record(z.string(), z.unknown()).default({}),
   isDefault: z.boolean().default(false),
   createdByAgentId: z.string().uuid().optional()
 });
@@ -112,6 +126,9 @@ const viewDefinitionUpdateSchema = viewDefinitionInputSchema
 const viewRunInputSchema = z.object({
   viewId: z.string().optional(),
   key: z.string().optional(),
+  q: z.string().optional(),
+  filters: z.array(viewFilterSchema).optional(),
+  sort: z.array(viewSortSchema).optional(),
   limit: z.number().int().min(1).max(500).optional()
 });
 
@@ -166,11 +183,11 @@ const legacyViewFields: Record<LegacyViewObjectType, string[]> = {
 };
 
 const legacyDefaultViewColumns: Record<LegacyViewObjectType, string[]> = {
-  lead: ["fullName", "company", "email", "source", "updatedAt"],
-  person: ["fullName", "title", "location", "source", "updatedAt"],
-  company: ["name", "primaryDomain", "industry", "source", "updatedAt"],
-  task: ["title", "status", "type", "priority", "dueAt"],
-  event: ["type", "channel", "direction", "lead.fullName", "occurredAt"]
+  lead: ["fullName", "company", "title", "status", "nextAction"],
+  person: ["fullName", "title", "location", "updatedAt"],
+  company: ["name", "primaryDomain", "industry", "updatedAt"],
+  task: ["title", "status", "type", "dueAt", "lead.fullName"],
+  event: ["subject", "type", "channel", "lead.fullName", "occurredAt"]
 };
 
 const xrmCoreViewFields = new Set([
@@ -204,6 +221,12 @@ function normalizeName(value: string | undefined) {
 
 function normalizeEmail(value: string | undefined) {
   return compactText(value)?.toLowerCase();
+}
+
+function labelFromKey(value: string) {
+  return value
+    .replace(/[_.-]+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function emailDomain(email: string | undefined) {
@@ -364,8 +387,21 @@ function dateValue(value: unknown) {
   return Number.NaN;
 }
 
-function runViewPipeline<T>(rows: T[], filters: ViewFilter[], sort: ViewSort[], limit: number) {
-  const filtered = rows.filter((row) => filters.every((filter) => matchesViewFilter(row, filter)));
+function searchableRowText(record: unknown) {
+  if (!record || typeof record !== "object") {
+    return String(record ?? "").toLowerCase();
+  }
+  return JSON.stringify(record).toLowerCase();
+}
+
+function runViewPipeline<T>(rows: T[], filters: ViewFilter[], sort: ViewSort[], limit: number, query?: string | undefined) {
+  const normalizedQuery = compactText(query)?.toLowerCase();
+  const filtered = rows.filter((row) => {
+    if (normalizedQuery && !searchableRowText(row).includes(normalizedQuery)) {
+      return false;
+    }
+    return filters.every((filter) => matchesViewFilter(row, filter));
+  });
   const sorted = [...filtered].sort((left, right) => {
     for (const entry of sort) {
       const comparison = compareValues(getRecordValue(left, entry.field), getRecordValue(right, entry.field));
@@ -439,6 +475,13 @@ function toXrmViewRow(record: {
 
   return {
     ...fields,
+    _links: {
+      self: {
+        kind: "record",
+        id: record.id,
+        objectType: record.objectType?.slug
+      }
+    },
     id: record.id,
     objectType: record.objectType?.slug,
     objectTypeLabel: record.objectType?.label,
@@ -446,7 +489,7 @@ function toXrmViewRow(record: {
     displayName: record.displayName,
     externalKey: record.externalKey,
     fields,
-    status: record.status,
+    status: typeof fields["status"] === "string" && fields["status"] ? fields["status"] : record.status,
     source: record.source,
     taskCount: record.tasks?.length ?? 0,
     eventCount: record.activities?.length ?? 0,
@@ -456,6 +499,18 @@ function toXrmViewRow(record: {
     relationshipSummary,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt
+  };
+}
+
+function withLegacyViewLink<T extends { id: string }>(row: T, kind: LegacyViewObjectType) {
+  return {
+    ...row,
+    _links: {
+      self: {
+        kind,
+        id: row.id
+      }
+    }
   };
 }
 
@@ -1007,7 +1062,7 @@ async function resolveActivityLinks(tx: Tx, input: ActivityInput) {
   return { leadId, personId, companyId, taskId, xrmRecordId };
 }
 
-export function createCrmServices({ db }: ServiceContext) {
+export function createCrmServices({ db, backupsRequired = false }: ServiceContext) {
   return {
     async health() {
       const backup = await this.getBackupHealth();
@@ -1019,6 +1074,7 @@ export function createCrmServices({ db }: ServiceContext) {
           slug: OXRM_PRODUCT_SLUG,
           version: OXRM_PRODUCT_VERSION
         },
+        deployment: oxrmDeploymentInfoFromEnv(process.env),
         backup
       };
     },
@@ -1031,7 +1087,7 @@ export function createCrmServices({ db }: ServiceContext) {
 
       return db.query.xrmObjectTypes.findMany({
         where: conditions.length > 0 ? and(...conditions) : undefined,
-        with: { fields: true },
+        with: { fields: true, fieldMappings: { with: { semanticField: true } } },
         orderBy: [desc(xrmObjectTypes.system), desc(xrmObjectTypes.updatedAt)],
         limit: input.limit ?? 100
       });
@@ -1040,7 +1096,7 @@ export function createCrmServices({ db }: ServiceContext) {
     async getXrmObjectType(slugOrId: string) {
       return db.query.xrmObjectTypes.findFirst({
         where: uuidPattern.test(slugOrId) ? eq(xrmObjectTypes.id, slugOrId) : eq(xrmObjectTypes.slug, slugOrId),
-        with: { fields: true }
+        with: { fields: true, fieldMappings: { with: { semanticField: true } } }
       });
     },
 
@@ -1092,6 +1148,11 @@ export function createCrmServices({ db }: ServiceContext) {
               dataType: field.dataType,
               required: field.required,
               indexed: field.indexed,
+              searchable: field.searchable,
+              displayOrder: field.displayOrder,
+              summaryRank: field.summaryRank ?? null,
+              isPrimary: field.isPrimary,
+              options: field.options,
               config: field.config ?? {}
             })
             .onConflictDoUpdate({
@@ -1101,6 +1162,11 @@ export function createCrmServices({ db }: ServiceContext) {
                 dataType: field.dataType,
                 required: field.required,
                 indexed: field.indexed,
+                searchable: field.searchable,
+                displayOrder: field.displayOrder,
+                summaryRank: field.summaryRank ?? null,
+                isPrimary: field.isPrimary,
+                options: field.options,
                 config: field.config ?? {},
                 updatedAt: new Date()
               }
@@ -1205,9 +1271,10 @@ export function createCrmServices({ db }: ServiceContext) {
       return db.query.xrmRecords.findFirst({
         where: eq(xrmRecords.id, id),
         with: {
-          objectType: { with: { fields: true } },
+          objectType: { with: { fields: true, fieldMappings: { with: { semanticField: true } } } },
           sourceRelationships: { with: { relationshipType: true, targetRecord: { with: { objectType: true } } } },
           targetRelationships: { with: { relationshipType: true, sourceRecord: { with: { objectType: true } } } },
+          files: true,
           tasks: true,
           activities: true
         }
@@ -1362,6 +1429,163 @@ export function createCrmServices({ db }: ServiceContext) {
         orderBy: [desc(activities.occurredAt)],
         limit: input.limit ?? 100
       });
+    },
+
+    async listXrmSemanticFields(input: { limit?: number | undefined } = {}) {
+      return db.query.xrmSemanticFields.findMany({
+        with: { mappings: { with: { objectType: true, fieldDefinition: true } } },
+        orderBy: [asc(xrmSemanticFields.key)],
+        limit: input.limit ?? 100
+      });
+    },
+
+    async upsertXrmSemanticField(input: unknown) {
+      const parsed = upsertXrmSemanticFieldSchema.parse(input);
+      const [field] = await db
+        .insert(xrmSemanticFields)
+        .values({
+          key: parsed.key,
+          label: parsed.label,
+          dataType: parsed.dataType,
+          description: parsed.description,
+          metadata: parsed.metadata ?? {}
+        })
+        .onConflictDoUpdate({
+          target: xrmSemanticFields.key,
+          set: {
+            label: parsed.label,
+            dataType: parsed.dataType,
+            description: parsed.description,
+            metadata: parsed.metadata ?? {},
+            updatedAt: new Date()
+          }
+        })
+        .returning();
+      return field;
+    },
+
+    async upsertXrmFieldMapping(input: unknown) {
+      const parsed = upsertXrmFieldMappingSchema.parse(input);
+      return db.transaction(async (tx) => {
+        const objectType = await tx.query.xrmObjectTypes.findFirst({ where: eq(xrmObjectTypes.slug, parsed.objectType) });
+        if (!objectType) {
+          throw new Error(`xrm_object_type_not_found:${parsed.objectType}`);
+        }
+        const semanticField = await tx.query.xrmSemanticFields.findFirst({ where: eq(xrmSemanticFields.key, parsed.semanticFieldKey) });
+        if (!semanticField) {
+          throw new Error(`xrm_semantic_field_not_found:${parsed.semanticFieldKey}`);
+        }
+        const fieldDefinition = await tx.query.xrmFieldDefinitions.findFirst({
+          where: and(eq(xrmFieldDefinitions.objectTypeId, objectType.id), eq(xrmFieldDefinitions.key, parsed.fieldKey))
+        });
+
+        const [mapping] = await tx
+          .insert(xrmFieldMappings)
+          .values({
+            objectTypeId: objectType.id,
+            fieldDefinitionId: fieldDefinition?.id,
+            fieldKey: parsed.fieldKey,
+            semanticFieldId: semanticField.id,
+            confidence: parsed.confidence,
+            transform: parsed.transform ?? {},
+            metadata: parsed.metadata ?? {}
+          })
+          .onConflictDoUpdate({
+            target: [xrmFieldMappings.objectTypeId, xrmFieldMappings.fieldKey, xrmFieldMappings.semanticFieldId],
+            set: {
+              fieldDefinitionId: fieldDefinition?.id,
+              confidence: parsed.confidence,
+              transform: parsed.transform ?? {},
+              metadata: parsed.metadata ?? {},
+              updatedAt: new Date()
+            }
+          })
+          .returning();
+        return mapping;
+      });
+    },
+
+    async listXrmRecordFiles(input: { recordId: string; limit?: number | undefined }) {
+      return db.query.xrmFiles.findMany({
+        where: eq(xrmFiles.recordId, input.recordId),
+        orderBy: [asc(xrmFiles.kind), asc(xrmFiles.title)],
+        limit: input.limit ?? 100
+      });
+    },
+
+    async createXrmFile(input: unknown) {
+      const parsed = createXrmFileSchema.parse(input);
+      const [file] = await db
+        .insert(xrmFiles)
+        .values({
+          recordId: parsed.recordId,
+          kind: parsed.kind,
+          title: parsed.title,
+          path: parsed.path,
+          mimeType: parsed.mimeType,
+          size: parsed.size,
+          checksum: parsed.checksum,
+          metadata: parsed.metadata ?? {},
+          createdByAgentId: parsed.createdByAgentId
+        })
+        .onConflictDoUpdate({
+          target: [xrmFiles.recordId, xrmFiles.path],
+          set: {
+            kind: parsed.kind,
+            title: parsed.title,
+            mimeType: parsed.mimeType,
+            size: parsed.size,
+            checksum: parsed.checksum,
+            metadata: parsed.metadata ?? {},
+            updatedAt: new Date()
+          }
+        })
+        .returning();
+      return file;
+    },
+
+    async getWorkspaceLayout(input: unknown = {}) {
+      const parsed = workspaceLayoutSchema.parse(input);
+      const [objectTypes, views] = await Promise.all([
+        this.listXrmObjectTypes({ templateKey: parsed.templateKey, active: true, limit: 100 }),
+        this.listViews({ templateKey: parsed.templateKey, limit: 100 })
+      ]);
+
+      const visibleViews = views.filter((view) => view.audience !== "hidden" && view.placement !== "hidden");
+      const viewResults = await Promise.all(
+        visibleViews.map(async (view) => ({
+          placement: view.placement,
+          displayOrder: view.displayOrder,
+          result: await this.runView({ key: view.key, limit: parsed.limit })
+        }))
+      );
+      const sortedViewResults = [...viewResults].sort((a, b) => a.displayOrder - b.displayOrder);
+
+      const summarySource = sortedViewResults.some((entry) => entry.placement === "summary")
+        ? sortedViewResults.filter((entry) => entry.placement === "summary")
+        : sortedViewResults.filter((entry) => entry.placement === "main" || entry.placement === "secondary").slice(0, 6);
+      const summary = summarySource
+        .map((entry) => ({
+          key: entry.result.view.key,
+          label: entry.result.view.name,
+          objectType: entry.result.view.objectType,
+          value: entry.result.total
+        }));
+
+      return {
+        template: {
+          key: parsed.templateKey,
+          label: labelFromKey(parsed.templateKey)
+        },
+        objectTypes,
+        summary,
+        views: {
+          main: sortedViewResults.filter((entry) => entry.placement === "main").map((entry) => entry.result),
+          secondary: sortedViewResults.filter((entry) => entry.placement === "secondary").map((entry) => entry.result),
+          sidebar: sortedViewResults.filter((entry) => entry.placement === "sidebar").map((entry) => entry.result),
+          summary: sortedViewResults.filter((entry) => entry.placement === "summary").map((entry) => entry.result)
+        }
+      };
     },
 
     async listLeads(input: { query?: string | undefined; limit?: number | undefined } = {}) {
@@ -2211,7 +2435,7 @@ export function createCrmServices({ db }: ServiceContext) {
           parsedTemplateKey ? eq(viewDefinitions.templateKey, parsedTemplateKey) : undefined
         ),
         with: { createdByAgent: true },
-        orderBy: [desc(viewDefinitions.isDefault), desc(viewDefinitions.updatedAt)],
+        orderBy: [desc(viewDefinitions.isDefault), asc(viewDefinitions.displayOrder), desc(viewDefinitions.updatedAt)],
         limit: input.limit ?? 100
       });
     },
@@ -2244,6 +2468,11 @@ export function createCrmServices({ db }: ServiceContext) {
           columns: parsed.columns,
           filters: parsed.filters,
           sort: parsed.sort,
+          groupBy: parsed.groupBy,
+          placement: parsed.placement,
+          displayOrder: parsed.displayOrder,
+          audience: parsed.audience,
+          visibleWhen: parsed.visibleWhen,
           isDefault: parsed.isDefault,
           createdByAgentId: parsed.createdByAgentId
         })
@@ -2269,6 +2498,11 @@ export function createCrmServices({ db }: ServiceContext) {
           columns: parsed.columns,
           filters: parsed.filters,
           sort: parsed.sort,
+          groupBy: parsed.groupBy,
+          placement: parsed.placement,
+          displayOrder: parsed.displayOrder,
+          audience: parsed.audience,
+          visibleWhen: parsed.visibleWhen,
           isDefault: parsed.isDefault,
           updatedAt: new Date()
         })
@@ -2300,12 +2534,15 @@ export function createCrmServices({ db }: ServiceContext) {
 
       const objectType = viewObjectTypeSchema.parse(view.objectType);
       const columns = parseViewColumns(view.columns, objectType);
-      const filters = parseViewFilters(view.filters, objectType);
-      const sort = parseViewSort(view.sort, objectType);
+      const filters = [
+        ...parseViewFilters(view.filters, objectType),
+        ...parseViewFilters(parsed.filters ?? [], objectType)
+      ];
+      const sort = parsed.sort ? parseViewSort(parsed.sort, objectType) : parseViewSort(view.sort, objectType);
       const limit = parsed.limit ?? 100;
       const sourceLimit = Math.max(limit, 500);
       const rows: unknown[] = await this.getViewRows(objectType, sourceLimit);
-      const result = runViewPipeline(rows, filters, sort, limit);
+      const result = runViewPipeline(rows, filters, sort, limit, parsed.q);
 
       return {
         view: {
@@ -2318,6 +2555,11 @@ export function createCrmServices({ db }: ServiceContext) {
           columns,
           filters,
           sort,
+          groupBy: view.groupBy,
+          placement: view.placement,
+          displayOrder: view.displayOrder,
+          audience: view.audience,
+          visibleWhen: view.visibleWhen,
           isDefault: view.isDefault
         },
         total: result.total,
@@ -2348,15 +2590,15 @@ export function createCrmServices({ db }: ServiceContext) {
 
       switch (objectType) {
         case "lead":
-          return this.listLeads({ limit });
+          return (await this.listLeads({ limit })).map((row) => withLegacyViewLink(row, "lead"));
         case "person":
-          return this.listPeople({ limit });
+          return (await this.listPeople({ limit })).map((row) => withLegacyViewLink(row, "person"));
         case "company":
-          return this.listCompanies({ limit });
+          return (await this.listCompanies({ limit })).map((row) => withLegacyViewLink(row, "company"));
         case "task":
-          return this.listTasks({ limit });
+          return (await this.listTasks({ limit })).map((row) => withLegacyViewLink(row, "task"));
         case "event":
-          return this.listActivities({ limit });
+          return (await this.listActivities({ limit })).map((row) => withLegacyViewLink(row, "event"));
         default:
           return [];
       }
@@ -2539,14 +2781,16 @@ export function createCrmServices({ db }: ServiceContext) {
       const latest = await db.query.backupRuns.findFirst({
         orderBy: [desc(backupRuns.startedAt)]
       });
+      const stale =
+        !latest?.finishedAt ||
+        latest.status !== "succeeded" ||
+        Date.now() - latest.finishedAt.getTime() > 26 * 60 * 60 * 1000;
 
       return {
-        latestStatus: latest?.status ?? "missing",
+        required: backupsRequired,
+        latestStatus: latest?.status ?? (backupsRequired ? "missing" : "not_configured"),
         latestFinishedAt: latest?.finishedAt ?? null,
-        degraded:
-          !latest?.finishedAt ||
-          latest.status !== "succeeded" ||
-          Date.now() - latest.finishedAt.getTime() > 26 * 60 * 60 * 1000
+        degraded: backupsRequired && stale
       };
     },
 
