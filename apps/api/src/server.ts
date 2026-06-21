@@ -188,6 +188,16 @@ export async function buildServer() {
     return services.listXrmRecordEvents({ recordId: params.id, limit: query.limit ? Number(query.limit) : undefined });
   });
 
+  app.get("/api/jobs/:id/workflow", async (request) => {
+    const params = request.params as { id: string };
+    return services.getJobWorkflowState(params.id);
+  });
+
+  app.post("/api/jobs/:id/actions", async (request) => {
+    const params = request.params as { id: string };
+    return services.runJobWorkflowAction(params.id, request.body);
+  });
+
   app.get("/api/xrm/records/:id/files", async (request) => {
     const params = request.params as { id: string };
     const query = request.query as { limit?: string };

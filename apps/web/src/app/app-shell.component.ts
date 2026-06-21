@@ -10,9 +10,15 @@ import { NavDefinition, NavItem, WorkspaceMode } from "./models";
     <main class="shell" [attr.data-oxrm-mode]="mode">
       @if (demoEnabled) {
         <div class="demo-ribbon">
-          <span>Sample workspace</span>
-          <button type="button" (click)="guidedTour.emit()">Guided tour</button>
-          <button type="button" (click)="runLocal.emit()">Run locally</button>
+          <details class="sample-workspace-menu">
+            <summary>Sample workspace</summary>
+            <div>
+              <button type="button" (click)="guidedTour.emit()">Continue tour</button>
+              <button type="button" (click)="guidedTour.emit()">Restart tour</button>
+              <button type="button" (click)="runLocal.emit()">Run locally</button>
+              <button type="button" (click)="settings.emit()">About</button>
+            </div>
+          </details>
         </div>
       }
       <aside class="sidebar" aria-label="Primary">

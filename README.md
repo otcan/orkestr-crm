@@ -45,13 +45,21 @@ For a blank local workspace instead of demo records:
 ./oxrm init --template blank
 ```
 
-## Try With Codex
+## Try With An Assistant
 
-After cloning the repo, ask Codex:
+After cloning the repo, run oXRM locally and connect the assistant you use:
+Codex, Claude, Gemini, Cursor, VS Code, or another MCP-capable tool.
 
-> Run the oXRM local demo using `./oxrm codex-demo`, inspect today's outreach
-> queue, search for a synthetic founder lead, inspect job applications, and
-> draft the next follow-up without sending anything.
+```bash
+./oxrm init personal --template job-search --ports auto
+./oxrm -i personal urls
+```
+
+Register the printed MCP endpoint in your assistant, then ask it:
+
+> Inspect my local oXRM workspace, read today's queue, inspect job postings and
+> applications, summarize the linked context, and draft the next action without
+> sending anything or modifying records unless I approve it.
 
 The demo uses synthetic data only.
 

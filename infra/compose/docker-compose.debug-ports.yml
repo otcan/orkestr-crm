@@ -1,0 +1,8 @@
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:${HOST_POSTGRES_PORT:-18183}:5432"
+
+  redis:
+    ports:
+      - "127.0.0.1:${HOST_REDIS_PORT:-18184}:6379"

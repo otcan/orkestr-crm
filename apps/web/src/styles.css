@@ -28,7 +28,7 @@
 
 .detail-tabs {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(86px, 1fr));
   gap: 6px;
   margin-bottom: 14px;
 }
@@ -73,12 +73,24 @@
 }
 
 .detail-note,
-.draft-preview {
+.draft-preview,
+.detail-long-text {
   border: 1px solid #d8dee8;
   border-radius: 8px;
   background: #f8fafc;
   padding: 12px;
   line-height: 1.5;
+}
+
+.detail-long-text {
+  display: grid;
+  gap: 10px;
+  white-space: pre-line;
+}
+
+.detail-long-text h3,
+.detail-long-text h4 {
+  margin: 0;
 }
 
 .draft-preview {
@@ -155,13 +167,54 @@ button {
   color: #0f766e;
 }
 
-.demo-ribbon button {
+.demo-ribbon button,
+.sample-workspace-menu summary {
   border: 0;
   background: transparent;
   color: #334155;
   cursor: pointer;
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+
+.sample-workspace-menu {
+  position: relative;
+}
+
+.sample-workspace-menu summary {
+  font-weight: 700;
+  color: #0f766e;
+  list-style: none;
+}
+
+.sample-workspace-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.sample-workspace-menu > div {
+  position: absolute;
+  z-index: 40;
+  display: grid;
+  min-width: 180px;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.16);
+}
+
+.sample-workspace-menu button {
+  width: 100%;
+  border-radius: 6px;
+  padding: 8px 9px;
+  text-align: left;
+  text-decoration: none;
+}
+
+.sample-workspace-menu button:hover {
+  background: #f0fdfa;
 }
 
 .sidebar {
@@ -2308,8 +2361,94 @@ button.danger {
   min-width: 132px;
 }
 
+.jobs-table tr {
+  min-height: 64px;
+}
+
 .jobs-table td:first-child {
   min-width: 260px;
+}
+
+.jobs-table td:first-child strong,
+.jobs-table td:first-child small {
+  display: block;
+}
+
+.jobs-table td:first-child small {
+  max-width: 360px;
+  margin-top: 5px;
+  color: #64748b;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.jobs-table .action-col {
+  min-width: 178px;
+  width: 178px;
+}
+
+.row-action-cell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+button.compact {
+  min-height: 34px;
+  padding: 7px 9px;
+  font-size: 13px;
+  white-space: normal;
+}
+
+.overflow-menu {
+  position: relative;
+}
+
+.overflow-menu summary {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #ffffff;
+  cursor: pointer;
+  list-style: none;
+}
+
+.overflow-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.overflow-menu > div {
+  position: absolute;
+  right: 0;
+  z-index: 30;
+  display: grid;
+  min-width: 180px;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 6px;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.16);
+}
+
+.overflow-menu button {
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  padding: 8px 9px;
+  color: #1f2937;
+  text-align: left;
+  cursor: pointer;
+}
+
+.overflow-menu button:hover {
+  background: #f0fdfa;
 }
 
 .row-actions {

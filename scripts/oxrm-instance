@@ -10,6 +10,8 @@ Commands:
   config        Render docker compose config when Compose is available
   up            Start the instance
   down          Stop the instance
+  doctor        Check Docker, ports, instance config, and optionally Codex
+  ports         Print host ports used by this instance
   reset         Stop containers and delete local Docker data for the instance
   ps            Show containers
   logs [svc]    Follow logs
@@ -75,14 +77,12 @@ pick_port_base() {
     base=$((20000 + RANDOM % 35000))
     if ! port_in_use "$base" &&
       ! port_in_use "$((base + 1))" &&
-      ! port_in_use "$((base + 2))" &&
-      ! port_in_use "$((base + 3))" &&
-      ! port_in_use "$((base + 4))"; then
+      ! port_in_use "$((base + 2))"; then
       printf '%s' "$base"
       return
     fi
   done
-  echo "Could not find five free host ports for $instance" >&2
+  echo "Could not find three free host ports for $instance" >&2
   exit 1
 }
 
@@ -126,14 +126,10 @@ render_local_env() {
     web_port="$(pick_port_base)"
     api_port="$((web_port + 1))"
     mcp_port="$((web_port + 2))"
-    postgres_port="$((web_port + 3))"
-    redis_port="$((web_port + 4))"
   else
     web_port="${HOST_WEB_PORT:-$(grep -E '^HOST_WEB_PORT=' "$env_file" | cut -d= -f2-)}"
     api_port="${HOST_API_PORT:-$(grep -E '^HOST_API_PORT=' "$env_file" | cut -d= -f2-)}"
     mcp_port="${HOST_MCP_PORT:-$(grep -E '^HOST_MCP_PORT=' "$env_file" | cut -d= -f2-)}"
-    postgres_port="${HOST_POSTGRES_PORT:-$(grep -E '^HOST_POSTGRES_PORT=' "$env_file" | cut -d= -f2-)}"
-    redis_port="${HOST_REDIS_PORT:-$(grep -E '^HOST_REDIS_PORT=' "$env_file" | cut -d= -f2-)}"
   fi
 
   set_env_value "$env_file" POSTGRES_DB "$db_name"
@@ -142,8 +138,7 @@ render_local_env() {
   set_env_value "$env_file" HOST_WEB_PORT "$web_port"
   set_env_value "$env_file" HOST_API_PORT "$api_port"
   set_env_value "$env_file" HOST_MCP_PORT "$mcp_port"
-  set_env_value "$env_file" HOST_POSTGRES_PORT "$postgres_port"
-  set_env_value "$env_file" HOST_REDIS_PORT "$redis_port"
+  sed -i -E '/^HOST_POSTGRES_PORT=/d; /^HOST_REDIS_PORT=/d' "$env_file"
   set_env_value "$env_file" OXRM_API_URL "http://127.0.0.1:${api_port}"
   set_env_value "$env_file" OXRM_MCP_URL "http://127.0.0.1:${mcp_port}/mcp"
   set_env_value "$env_file" CRM_API_URL "http://127.0.0.1:${api_port}"
@@ -158,8 +153,12 @@ if [[ "$command" == "init" ]]; then
     echo "$env_file already exists."
     exit 0
   fi
+  random_ports=false
+  if [[ "${OXRM_INIT_PORTS:-}" == "auto" ]]; then
+    random_ports=true
+  fi
   if [[ -f "$example_env_file" ]]; then
-    render_local_env "$example_env_file" false
+    render_local_env "$example_env_file" "$random_ports"
   elif [[ -f "$repo_root/instances/demo.env.example" ]]; then
     render_local_env "$repo_root/instances/demo.env.example" true
   else
@@ -285,7 +284,6 @@ direct_up() {
     --name "$(container_name postgres)" \
     --network "$project" \
     --network-alias postgres \
-    -p "127.0.0.1:${HOST_POSTGRES_PORT}:5432" \
     -v "${project}-postgres-data:/var/lib/postgresql/data" \
     -e POSTGRES_DB="$POSTGRES_DB" \
     -e POSTGRES_USER="$POSTGRES_USER" \
@@ -297,7 +295,6 @@ direct_up() {
     --name "$(container_name redis)" \
     --network "$project" \
     --network-alias redis \
-    -p "127.0.0.1:${HOST_REDIS_PORT}:6379" \
     redis:8 >/dev/null
 
   wait_for_postgres
@@ -462,6 +459,198 @@ direct_wait_for_app() {
   return 1
 }
 
+project_owns_port() {
+  local port="$1"
+  docker ps --filter "name=${project}-" --format '{{.Ports}}' 2>/dev/null | grep -Eq "(127\\.0\\.0\\.1|0\\.0\\.0\\.0|:::):${port}->"
+}
+
+print_port_owner() {
+  local port="$1"
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -nP -iTCP:"$port" -sTCP:LISTEN 2>/dev/null | sed -n '2p' | awk '{$1=$1; print}'
+    return
+  fi
+  if command -v ss >/dev/null 2>&1; then
+    ss -ltnp 2>/dev/null | awk -v port="$port" '$4 ~ ":" port "$" {print $0; exit}'
+  fi
+}
+
+preflight_public_ports() {
+  local failures=0
+  local entries=(
+    "Web:${HOST_WEB_PORT}"
+    "API:${HOST_API_PORT}"
+    "MCP:${HOST_MCP_PORT}"
+  )
+  for entry in "${entries[@]}"; do
+    local label="${entry%%:*}"
+    local port="${entry#*:}"
+    if port_in_use "$port" && ! project_owns_port "$port"; then
+      echo "${label} port ${port} is already in use." >&2
+      print_port_owner "$port" >&2 || true
+      failures=$((failures + 1))
+    fi
+  done
+  if [[ "$failures" -gt 0 ]]; then
+    echo "" >&2
+    echo "Choose another instance/port set or stop the process using the port." >&2
+    echo "Inspect ports with: ./oxrm -i ${instance} doctor" >&2
+    exit 1
+  fi
+}
+
+compose_running() {
+  local services
+  services="$(compose ps --services --status running 2>/dev/null || true)"
+  grep -qx api <<<"$services" &&
+    grep -qx mcp <<<"$services" &&
+    grep -qx web <<<"$services"
+}
+
+direct_running() {
+  docker inspect "$(container_name api)" "$(container_name mcp)" "$(container_name web)" >/dev/null 2>&1 || return 1
+  [[ "$(docker inspect -f '{{.State.Running}}' "$(container_name api)" 2>/dev/null)" == true ]] &&
+    [[ "$(docker inspect -f '{{.State.Running}}' "$(container_name mcp)" 2>/dev/null)" == true ]] &&
+    [[ "$(docker inspect -f '{{.State.Running}}' "$(container_name web)" 2>/dev/null)" == true ]]
+}
+
+print_urls() {
+  printf 'Web: %s\n' "http://127.0.0.1:${HOST_WEB_PORT}"
+  printf 'API health: %s\n' "http://127.0.0.1:${HOST_API_PORT}/api/health"
+  printf 'MCP health: %s\n' "http://127.0.0.1:${HOST_MCP_PORT}/health"
+  printf 'MCP endpoint: %s\n' "http://127.0.0.1:${HOST_MCP_PORT}/mcp"
+  if [[ "${HOST_MCP_PORT}" != "18182" ]]; then
+    printf '\nCodex MCP registration URL: %s\n' "http://127.0.0.1:${HOST_MCP_PORT}/mcp"
+  fi
+}
+
+compose_up_idempotent() {
+  if compose_running; then
+    echo "oXRM instance '${instance}' is already running."
+    print_urls
+    return
+  fi
+  preflight_public_ports
+  if ! compose up -d --build; then
+    echo "" >&2
+    echo "Startup failed for instance '${instance}'." >&2
+    echo "Stopping newly-started app containers while preserving volumes." >&2
+    compose stop "${app_services[@]}" >/dev/null 2>&1 || true
+    compose ps >&2 || true
+    echo "" >&2
+    echo "Recovery commands:" >&2
+    echo "  ./oxrm -i ${instance} logs" >&2
+    echo "  ./oxrm -i ${instance} restart" >&2
+    exit 1
+  fi
+  print_urls
+}
+
+direct_up_idempotent() {
+  if direct_running; then
+    echo "oXRM instance '${instance}' is already running."
+    print_urls
+    return
+  fi
+  preflight_public_ports
+  if ! direct_up; then
+    echo "" >&2
+    echo "Startup failed for instance '${instance}'." >&2
+    echo "Stopping newly-started app containers while preserving volumes." >&2
+    direct_stop_app_services
+    docker ps -a --filter "name=${project}-" --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' >&2 || true
+    echo "" >&2
+    echo "Recovery commands:" >&2
+    echo "  ./oxrm -i ${instance} logs" >&2
+    echo "  ./oxrm -i ${instance} restart" >&2
+    exit 1
+  fi
+  print_urls
+}
+
+codex_doctor() {
+  echo ""
+  echo "Codex:"
+  if ! command -v codex >/dev/null 2>&1; then
+    echo "  Status: Not installed"
+    echo "  Install Codex, then rerun: ./oxrm doctor --codex"
+    return
+  fi
+
+  local codex_path
+  codex_path="$(command -v codex)"
+  if codex_version="$(codex --version 2>&1)"; then
+    echo "  Status: Installed and working"
+    echo "  Path: ${codex_path}"
+    echo "  Version: ${codex_version}"
+    return
+  fi
+
+  echo "  Status: Installed but broken"
+  echo "  Path: ${codex_path}"
+  echo "  Error: ${codex_version}"
+  cat <<'EOF'
+  Repair checklist:
+    which -a codex
+    npm uninstall -g @openai/codex codex
+    hash -r
+    install the current standalone Codex CLI
+    codex --version
+EOF
+}
+
+run_doctor() {
+  local include_codex=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --codex)
+        include_codex=true
+        ;;
+      *)
+        echo "Unknown doctor option: $1" >&2
+        exit 2
+        ;;
+    esac
+    shift
+  done
+
+  echo "oXRM doctor"
+  echo "Instance: ${instance}"
+  echo "Project: ${project}"
+  echo "Env: ${env_file}"
+  echo ""
+  if command -v docker >/dev/null 2>&1; then
+    echo "Docker: $(docker --version)"
+  else
+    echo "Docker: not installed"
+  fi
+  if has_compose; then
+    echo "Compose: $(docker compose version --short 2>/dev/null || docker compose version)"
+  else
+    echo "Compose: not installed; direct Docker fallback will be used"
+  fi
+  echo ""
+  echo "Ports:"
+  for entry in "Web:${HOST_WEB_PORT}" "API:${HOST_API_PORT}" "MCP:${HOST_MCP_PORT}"; do
+    local label="${entry%%:*}"
+    local port="${entry#*:}"
+    if port_in_use "$port"; then
+      if project_owns_port "$port"; then
+        echo "  ${label} ${port}: in use by this oXRM instance"
+      else
+        echo "  ${label} ${port}: blocked by another process"
+        print_port_owner "$port" | sed 's/^/    /' || true
+      fi
+    else
+      echo "  ${label} ${port}: available"
+    fi
+  done
+  print_urls
+  if [[ "$include_codex" == true ]]; then
+    codex_doctor
+  fi
+}
+
 parse_upgrade_flags() {
   upgrade_skip_backup=false
   upgrade_skip_smoke=false
@@ -610,9 +799,9 @@ case "$command" in
     ;;
   up)
     if has_compose; then
-      compose up -d --build
+      compose_up_idempotent
     else
-      direct_up
+      direct_up_idempotent
     fi
     ;;
   down)
@@ -636,6 +825,12 @@ case "$command" in
     else
       docker ps -a --filter "name=${project}-" --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
     fi
+    ;;
+  doctor)
+    run_doctor "$@"
+    ;;
+  ports)
+    print_urls
     ;;
   logs)
     if has_compose; then
@@ -733,9 +928,7 @@ case "$command" in
     fi
     ;;
   urls)
-    printf 'Web: %s\n' "http://127.0.0.1:${HOST_WEB_PORT}"
-    printf 'API health: %s\n' "http://127.0.0.1:${HOST_API_PORT}/api/health"
-    printf 'MCP health: %s\n' "http://127.0.0.1:${HOST_MCP_PORT}/health"
+    print_urls
     ;;
   -h|--help|help)
     usage

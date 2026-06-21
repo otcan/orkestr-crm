@@ -66,6 +66,7 @@
           [search]="jobSearch()"
           [controls]="jobFilterControls()"
           [result]="jobPageResult()"
+          [workflowById]="jobWorkflowById()"
           [selectedId]="selectedRecordId()"
           (searchChange)="setJobSearch($event)"
           (filterChange)="setJobFilter($event)"
@@ -74,9 +75,7 @@
           (pageSizeChange)="setJobPageSize($event)"
           (add)="startCreateJob()"
           (open)="selectRecordRow($event)"
-          (startApplication)="startApplicationFromJob($event)"
-          (markNotFit)="markJobNotFit($event)"
-          (saveLater)="saveJobForLater($event)"
+          (runAction)="runJobActionFromRow($event)"
         />
       }
 
@@ -231,8 +230,7 @@
     (editDraft)="resetDraft($event)"
     (markApproved)="markDraftApproved($event)"
     (dismiss)="dismissDraft($event)"
-    (startApplicationFromJob)="startApplicationFromJobRecord($event)"
-    (markJobNotFit)="markJobRecordNotFit($event)"
+    (runJobAction)="runJobActionFromRecord($event)"
     (openCvLibrary)="openCvLibrary()"
   />
 </oc-app-shell>
@@ -241,6 +239,7 @@
 @if (guidedTourOpen()) {
   <oc-guided-tour
     [mode]="workspaceMode()"
+    (stepChange)="handleTourStep($event)"
     (finish)="completeDemoGuide()"
     (skip)="completeDemoGuide()"
   />

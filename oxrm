@@ -11,7 +11,7 @@ usage() {
 Usage: ./oxrm [--instance name] <command> [args]
 
 Common commands:
-  init [name] [--template t]
+  init [name] [--template t] [--ports auto]
                       Guided first run: blank, job-search, or outreach
   codex-demo [--reset] [--check]
                       Start, seed, and smoke-test the local Codex demo
@@ -22,6 +22,8 @@ Common commands:
   restart            Restart Docker containers
   status             Show containers
   urls               Print local URLs
+  ports              Print local URLs and ports
+  doctor [--codex]   Check Docker, ports, instance config, and optionally Codex
   ready              Run migrate and baseline seed
   upgrade            Backup, migrate, seed, restart, and smoke-test the instance
   demo [scenario]    Seed public-safe demo data: job-search, linkedin-outreach, or codex-demo
@@ -44,6 +46,7 @@ Compatibility:
 
 Examples:
   ./oxrm init
+  ./oxrm init personal --template job-search --ports auto
   ./oxrm init client-a --template blank
   ./oxrm init --template job-search
   ./oxrm init --template blank
@@ -125,6 +128,7 @@ parse_demo_option() {
 
 parse_init_option() {
   init_template="__unset"
+  init_ports="default"
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --template|--profile)
@@ -137,6 +141,18 @@ parse_init_option() {
         ;;
       --template=*|--profile=*)
         init_template="${1#*=}"
+        shift
+        ;;
+      --ports)
+        if [[ $# -lt 2 ]]; then
+          echo "Missing mode after --ports" >&2
+          exit 2
+        fi
+        init_ports="$2"
+        shift 2
+        ;;
+      --ports=*)
+        init_ports="${1#*=}"
         shift
         ;;
       --demo)
@@ -302,7 +318,15 @@ case "$command" in
     parse_init_option "$@"
     choose_init_template
     scenario="$(init_demo_scenario)"
-    run_instance init
+    if [[ "$init_ports" == "auto" ]]; then
+      OXRM_INIT_PORTS=auto run_instance init
+    elif [[ "$init_ports" == "default" ]]; then
+      run_instance init
+    else
+      echo "Unknown ports mode: $init_ports" >&2
+      echo "Use --ports auto or omit it." >&2
+      exit 2
+    fi
     ensure_instance_env
     run_instance up
     run_instance migrate
@@ -353,6 +377,13 @@ case "$command" in
     ;;
   urls)
     run_instance urls
+    ;;
+  ports)
+    run_instance ports
+    ;;
+  doctor)
+    ensure_instance_env
+    run_instance doctor "$@"
     ;;
   ready|bootstrap)
     run_instance migrate

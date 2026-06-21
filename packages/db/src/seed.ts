@@ -127,13 +127,23 @@ const builtInObjectTypes = [
       { key: "location", label: "Location", dataType: "text", indexed: true },
       { key: "status", label: "Status", dataType: "text", indexed: true },
       { key: "fitRate", label: "Fit rate", dataType: "number", indexed: true },
+      { key: "decisionState", label: "Decision state", dataType: "text", indexed: true },
       { key: "applicationStage", label: "Application phase", dataType: "text", indexed: true },
+      { key: "closingReason", label: "Closing reason", dataType: "text", indexed: true },
+      { key: "viewedAt", label: "Viewed at", dataType: "datetime", indexed: true },
+      { key: "discoveredAt", label: "Discovered at", dataType: "datetime", indexed: true },
       { key: "lastTouchAt", label: "Last touch", dataType: "datetime", indexed: true },
       { key: "nextActionAt", label: "Next action", dataType: "datetime", indexed: true },
       { key: "nextAction", label: "Next action summary", dataType: "text" },
       { key: "url", label: "Posting URL", dataType: "url", indexed: true },
       { key: "source", label: "Source", dataType: "text", indexed: true },
-      { key: "description", label: "Description", dataType: "text" }
+      { key: "description", label: "Description", dataType: "text" },
+      { key: "fullDescription", label: "Full description", dataType: "long_text" },
+      { key: "requirements", label: "Requirements", dataType: "long_text" },
+      { key: "responsibilities", label: "Responsibilities", dataType: "long_text" },
+      { key: "matchingSkills", label: "Matching skills", dataType: "long_text" },
+      { key: "missingSkills", label: "Missing skills", dataType: "long_text" },
+      { key: "riskNotes", label: "Risk notes", dataType: "long_text" }
     ]
   },
   {
@@ -180,7 +190,10 @@ const builtInObjectTypes = [
       { key: "role", label: "Role", dataType: "text", required: true, indexed: true },
       { key: "company", label: "Company", dataType: "text", indexed: true },
       { key: "stage", label: "Stage", dataType: "text", indexed: true },
+      { key: "closingReason", label: "Closing reason", dataType: "text", indexed: true },
       { key: "fitRate", label: "Fit rate", dataType: "number", indexed: true },
+      { key: "jobId", label: "Linked job", dataType: "text", indexed: true },
+      { key: "jobUrl", label: "Job URL", dataType: "url", indexed: true },
       { key: "responsiblePerson", label: "Responsible person", dataType: "text", indexed: true },
       { key: "appliedAt", label: "Applied at", dataType: "datetime", indexed: true },
       { key: "lastTouchAt", label: "Last touch", dataType: "datetime", indexed: true },
@@ -1360,6 +1373,18 @@ try {
       fields: { name: "KernelDesk", domain: "kerneldesk.example", stage: "archived", website: "https://kerneldesk.example" }
     },
     {
+      objectType: "job_company",
+      externalKey: "job-search:company:papertrail-systems",
+      displayName: "Papertrail Systems",
+      fields: { name: "Papertrail Systems", domain: "papertrail.example", stage: "new", website: "https://papertrail.example" }
+    },
+    {
+      objectType: "job_company",
+      externalKey: "job-search:company:quartzflow",
+      displayName: "QuartzFlow",
+      fields: { name: "QuartzFlow", domain: "quartzflow.example", stage: "new", website: "https://quartzflow.example" }
+    },
+    {
       objectType: "job_contact",
       externalKey: "job-search:contact:maya-erdem",
       displayName: "Maya Erdem",
@@ -1394,14 +1419,24 @@ try {
         location: "Berlin / Remote",
         status: "open",
         fitRate: 92,
-        applicationStage: "contacted",
+        decisionState: "Reviewing",
+        applicationStage: "Applied",
+        viewedAt: "2026-06-10T08:35:00.000Z",
+        discoveredAt: "2026-06-10T08:20:00.000Z",
         lastTouchAt: "2026-06-16T14:20:00.000Z",
         nextActionAt: "2026-06-19T09:00:00.000Z",
         nextAction: "Send intro-call prep and confirm referral status.",
         source: "manual shortlist",
         url: "https://jobs.example/signalworks-platform-engineer",
         description:
-          "Build event-driven infrastructure for customer workflow automation. Strong TypeScript, PostgreSQL, queues, observability, and pragmatic ownership required."
+          "Build event-driven infrastructure for customer workflow automation. Strong TypeScript, PostgreSQL, queues, observability, and pragmatic ownership required.",
+        fullDescription:
+          "SignalWorks is hiring a senior platform engineer to own the workflow runtime behind customer automation products. The role includes TypeScript services, PostgreSQL data modeling, queue reliability, observability, and production debugging. The team wants someone who can turn messy operator workflows into reliable internal platforms, write clear APIs, and keep humans in control of high-impact automation. The application is already active because a warm intro call was recorded with Maya Erdem.",
+        requirements: "TypeScript, Node.js, PostgreSQL, Docker, queues, observability, API design, production ownership.",
+        responsibilities: "Own platform services, improve queue reliability, design APIs for operator workflows, and document operational tradeoffs.",
+        matchingSkills: "TypeScript, PostgreSQL, Docker, event-driven queues, observability, local-first workflow tooling.",
+        missingSkills: "More enterprise SSO examples would strengthen the application.",
+        riskNotes: "Position toward product/platform impact rather than pure backend delivery."
       }
     },
     {
@@ -1415,14 +1450,24 @@ try {
         location: "Remote EU",
         status: "applied",
         fitRate: 88,
-        applicationStage: "applied",
+        decisionState: "Reviewing",
+        applicationStage: "Applied",
+        viewedAt: "2026-06-12T07:40:00.000Z",
+        discoveredAt: "2026-06-12T07:15:00.000Z",
         lastTouchAt: "2026-06-13T11:30:00.000Z",
         nextActionAt: "2026-06-20T08:30:00.000Z",
         nextAction: "Draft a polite follow-up referencing agent workflow experience.",
         source: "LinkedIn alert",
         url: "https://jobs.example/northstar-ai-tools-engineer",
         description:
-          "Own internal AI tooling for research teams. Role emphasizes agent workflows, evals, TypeScript services, and careful human-in-the-loop UX."
+          "Own internal AI tooling for research teams. Role emphasizes agent workflows, evals, TypeScript services, and careful human-in-the-loop UX.",
+        fullDescription:
+          "Northstar Labs is looking for an AI tools engineer to build internal research and operations tooling. The work covers agent workflows, evaluation harnesses, prompt and tool integration, TypeScript services, and approval UX for sensitive actions. The application has already been submitted, so the next useful step is a concise follow-up with one concrete example of agent workflow work.",
+        requirements: "Agent workflows, evals, TypeScript, service APIs, human approval UX, careful tool design.",
+        responsibilities: "Build internal AI tools, maintain eval loops, integrate local tools, and improve review-before-action workflows.",
+        matchingSkills: "Agents, MCP, evals, TypeScript APIs, workflow automation, review-before-send UX.",
+        missingSkills: "Research-lab domain experience is lighter than requested.",
+        riskNotes: "Lead with concrete agent workflow examples and avoid sounding infrastructure-only."
       }
     },
     {
@@ -1436,14 +1481,24 @@ try {
         location: "Munich hybrid",
         status: "saved",
         fitRate: 74,
-        applicationStage: "fit_review",
+        decisionState: "Reviewing",
+        applicationStage: "Not started",
+        viewedAt: "2026-06-18T08:30:00.000Z",
+        discoveredAt: "2026-06-18T06:40:00.000Z",
         lastTouchAt: "2026-06-18T06:40:00.000Z",
         nextActionAt: "2026-06-19T15:00:00.000Z",
         nextAction: "Review fit, then decide whether to create the application packet.",
         source: "Wellfound alert",
         url: "https://jobs.example/atlas-health-platform-lead",
         description:
-          "Lead platform reliability for scheduling and care coordination systems. Needs API design, Postgres, compliance awareness, and mentoring."
+          "Lead platform reliability for scheduling and care coordination systems. Needs API design, Postgres, compliance awareness, and mentoring.",
+        fullDescription:
+          "Atlas Health needs a platform lead for scheduling and care coordination systems. The technical overlap is API design, PostgreSQL, reliability, audit trails, and mentoring, but the fit needs disciplined review because regulated healthcare workflows require careful positioning. The correct next action is to review fit and tailor the CV only if the healthcare-platform angle is defensible.",
+        requirements: "API design, PostgreSQL, reliability, auditability, mentoring, compliance-aware data handling.",
+        responsibilities: "Lead platform reliability, improve scheduling workflows, review operational risks, and mentor backend engineers.",
+        matchingSkills: "API design, Postgres, reliability, scheduling workflows, mentoring.",
+        missingSkills: "Healthcare compliance and regulated data handling examples.",
+        riskNotes: "Do not apply with a generic CV; tailor around reliability and auditability."
       }
     },
     {
@@ -1457,14 +1512,24 @@ try {
         location: "Amsterdam / Remote",
         status: "open",
         fitRate: 82,
-        applicationStage: "contacted",
+        decisionState: "Reviewing",
+        applicationStage: "Applied",
+        viewedAt: "2026-06-17T15:50:00.000Z",
+        discoveredAt: "2026-06-17T15:10:00.000Z",
         lastTouchAt: "2026-06-17T16:10:00.000Z",
         nextActionAt: "2026-06-21T10:00:00.000Z",
         nextAction: "Wait for Elena reply, then send CV context if positive.",
         source: "warm contact",
         url: "https://jobs.example/loombridge-founding-backend",
         description:
-          "Early backend hire for B2B workflow product. Needs product-minded backend engineer comfortable with customer discovery and fast iteration."
+          "Early backend hire for B2B workflow product. Needs product-minded backend engineer comfortable with customer discovery and fast iteration.",
+        fullDescription:
+          "Loombridge is a founder-stage B2B workflow product looking for an early backend engineer. The job description emphasizes product-minded backend ownership, direct customer discovery, fast iteration, and enough infrastructure judgment to keep a small team moving. The outreach is active through a warm referral, so the next action depends on Elena's response rather than a blind application.",
+        requirements: "Backend product ownership, TypeScript or similar service work, customer discovery, pragmatic infrastructure.",
+        responsibilities: "Build early product backend, join customer calls, shape workflow primitives, and iterate with founders.",
+        matchingSkills: "Product-minded backend work, customer discovery, workflow systems, fast iteration.",
+        missingSkills: "Need stronger direct customer-facing execution examples.",
+        riskNotes: "Warm intro matters more than cold application quality here."
       }
     },
     {
@@ -1478,14 +1543,85 @@ try {
         location: "Remote",
         status: "rejected",
         fitRate: 46,
-        applicationStage: "rejected",
+        decisionState: "Archived",
+        applicationStage: "Closed",
+        closingReason: "Rejected",
+        viewedAt: "2026-06-15T09:00:00.000Z",
+        discoveredAt: "2026-06-02T08:30:00.000Z",
         lastTouchAt: "2026-06-15T08:45:00.000Z",
         nextActionAt: "",
         nextAction: "Archived. Keep lesson: this was too Terraform/Kubernetes heavy.",
         source: "recruiter email",
         url: "https://jobs.example/kerneldesk-infra",
         description:
-          "Infrastructure role focused on Kubernetes, Terraform, and incident response. Archived after recruiter said the team needed deeper infra specialization."
+          "Infrastructure role focused on Kubernetes, Terraform, and incident response. Archived after recruiter said the team needed deeper infra specialization.",
+        fullDescription:
+          "KernelDesk was an infrastructure-heavy role centered on Kubernetes, Terraform, incident response, and platform operations. The recruiter clarified that the team needed deep infra specialization rather than product/platform workflow work. The application is closed with rejection recorded, and the record remains useful as calibration data for future fit scoring.",
+        requirements: "Kubernetes, Terraform, incident response, infrastructure operations, platform reliability.",
+        responsibilities: "Maintain infrastructure, lead incident response, own Terraform modules, and support production reliability.",
+        matchingSkills: "Docker, observability, production ownership.",
+        missingSkills: "Deep Terraform, Kubernetes operations, incident-command specialization.",
+        riskNotes: "Archived as a calibration example for avoiding overly infra-heavy roles."
+      }
+    },
+    {
+      objectType: "job",
+      externalKey: "job-search:job:papertrail-devex",
+      displayName: "Developer Experience Engineer",
+      fields: {
+        title: "Developer Experience Engineer",
+        company: "Papertrail Systems",
+        platform: "Company careers",
+        location: "Remote EU",
+        status: "open",
+        fitRate: 86,
+        decisionState: "New",
+        applicationStage: "Not started",
+        viewedAt: "",
+        discoveredAt: "2026-06-21T07:25:00.000Z",
+        lastTouchAt: "",
+        nextActionAt: "2026-06-21T13:00:00.000Z",
+        nextAction: "Review fit and decide whether to start an application.",
+        source: "company career page",
+        url: "https://jobs.example/papertrail-devex",
+        description: "Build internal developer workflows, local tooling, CI feedback loops, and documentation for a distributed product engineering team.",
+        fullDescription:
+          "Papertrail Systems is hiring a developer experience engineer to improve local development, CI feedback, internal tooling, and documentation for product engineers. The role is a strong match for someone who can reason about developer workflows, Docker-based local setup, TypeScript services, and operational docs. No application exists yet; this is one of the two fresh jobs that should be reviewed today.",
+        requirements: "Developer tooling, Docker, CI, TypeScript, documentation, local setup, product engineering empathy.",
+        responsibilities: "Improve local development loops, reduce CI noise, write operational docs, and build small internal tools.",
+        matchingSkills: "Docker, TypeScript, local-first tooling, CI troubleshooting, documentation.",
+        missingSkills: "Need to confirm build-system ownership expectations.",
+        riskNotes: "Position as workflow/product tooling, not only backend services."
+      }
+    },
+    {
+      objectType: "job",
+      externalKey: "job-search:job:quartzflow-automation",
+      displayName: "Workflow Automation Engineer",
+      fields: {
+        title: "Workflow Automation Engineer",
+        company: "QuartzFlow",
+        platform: "YC Work at a Startup",
+        location: "Berlin / Remote",
+        status: "open",
+        fitRate: 79,
+        decisionState: "New",
+        applicationStage: "Not started",
+        viewedAt: "",
+        discoveredAt: "2026-06-20T18:10:00.000Z",
+        lastTouchAt: "",
+        nextActionAt: "2026-06-21T14:30:00.000Z",
+        nextAction: "Run fit calculation and prepare an application packet if fit stays high.",
+        source: "job alert",
+        url: "https://jobs.example/quartzflow-automation",
+        description: "Design workflow automations for operations teams with strict review steps, audit history, and integrations.",
+        fullDescription:
+          "QuartzFlow is looking for a workflow automation engineer to design automation systems for operations teams. The role combines backend services, integrations, approval steps, audit history, and careful UX for human-reviewed automation. No application exists yet; the intended agent action is to calculate fit from the CV and suggest whether to start an application.",
+        requirements: "Workflow automation, backend services, integrations, audit trails, review UX, TypeScript or Python.",
+        responsibilities: "Design automation flows, integrate external systems, build approval checkpoints, and maintain activity history.",
+        matchingSkills: "Workflow automation, approval checkpoints, audit trails, backend integrations.",
+        missingSkills: "Need more evidence around customer-facing implementation and integration depth.",
+        riskNotes: "Apply only if the cover letter can make the approval/audit angle specific."
       }
     },
     {
@@ -1585,6 +1721,36 @@ try {
         riskNotes: "Archived as a calibration example for avoiding overly infra-heavy roles.",
         recommendedAction: "Do not pursue. Use the lesson to filter future alerts.",
         evaluatedAt: "2026-06-15T09:00:00.000Z"
+      }
+    },
+    {
+      objectType: "job_fit",
+      externalKey: "job-search:fit:papertrail-devex",
+      displayName: "Fit - Papertrail Developer Experience Engineer",
+      fields: {
+        title: "Papertrail Developer Experience Engineer fit",
+        fitRate: 86,
+        fitSummary: "Strong fit for local developer workflows, Docker setup, CI feedback loops, and operator-facing documentation.",
+        matchingSkills: "Docker, TypeScript, local-first tooling, CI troubleshooting, documentation, product engineering empathy",
+        missingSkills: "Need to confirm whether the team expects deep build-system ownership.",
+        riskNotes: "Position as workflow/product tooling, not only backend services.",
+        recommendedAction: "Review description, then start application if CV can emphasize developer workflow systems.",
+        evaluatedAt: "2026-06-21T07:40:00.000Z"
+      }
+    },
+    {
+      objectType: "job_fit",
+      externalKey: "job-search:fit:quartzflow-automation",
+      displayName: "Fit - QuartzFlow Workflow Automation Engineer",
+      fields: {
+        title: "QuartzFlow Workflow Automation Engineer fit",
+        fitRate: 79,
+        fitSummary: "Good fit for automation loops, approval checkpoints, audit history, and integrations.",
+        matchingSkills: "Workflow automation, agent-assisted approvals, audit trails, backend integrations",
+        missingSkills: "Need more evidence around customer-facing implementation and integration depth.",
+        riskNotes: "Apply only if the cover letter can make the approval/audit angle specific.",
+        recommendedAction: "Run CV fit calculation and decide whether to prepare a tailored application packet.",
+        evaluatedAt: "2026-06-20T18:30:00.000Z"
       }
     },
     {
@@ -1790,7 +1956,7 @@ try {
       fields: {
         role: "Senior Platform Engineer",
         company: "SignalWorks",
-        stage: "contacted",
+        stage: "Applied",
         fitRate: 92,
         responsiblePerson: "Maya Erdem",
         appliedAt: "2026-06-10T09:00:00.000Z",
@@ -1808,7 +1974,7 @@ try {
       fields: {
         role: "AI Tools Engineer",
         company: "Northstar Labs",
-        stage: "applied",
+        stage: "Applied",
         fitRate: 88,
         responsiblePerson: "Jonas Keller",
         appliedAt: "2026-06-13T11:30:00.000Z",
@@ -1826,7 +1992,7 @@ try {
       fields: {
         role: "Health Platform Lead",
         company: "Atlas Health",
-        stage: "fit_review",
+        stage: "Not started",
         fitRate: 74,
         responsiblePerson: "Rita Shah",
         appliedAt: "",
@@ -1844,7 +2010,7 @@ try {
       fields: {
         role: "Founding Backend Engineer",
         company: "Loombridge",
-        stage: "contacted",
+        stage: "Applied",
         fitRate: 82,
         responsiblePerson: "Elena Moro",
         appliedAt: "",
@@ -1862,7 +2028,8 @@ try {
       fields: {
         role: "Infrastructure Engineer",
         company: "KernelDesk",
-        stage: "rejected",
+        stage: "Closed",
+        closingReason: "Rejected",
         fitRate: 46,
         responsiblePerson: "Recruiting team",
         appliedAt: "2026-06-02T10:00:00.000Z",
@@ -2385,6 +2552,8 @@ try {
     ["job_belongs_to_company", "job-search:job:health-platform-lead", "job-search:company:atlas-health"],
     ["job_belongs_to_company", "job-search:job:founding-backend", "job-search:company:loombridge"],
     ["job_belongs_to_company", "job-search:job:infra-engineer", "job-search:company:kerneldesk"],
+    ["job_belongs_to_company", "job-search:job:papertrail-devex", "job-search:company:papertrail-systems"],
+    ["job_belongs_to_company", "job-search:job:quartzflow-automation", "job-search:company:quartzflow"],
     ["job_alert_matches_job", "job-search:alert:northstar-ai-tools", "job-search:job:ai-tools-engineer"],
     ["job_alert_matches_job", "job-search:alert:atlas-health-platform", "job-search:job:health-platform-lead"],
     ["job_fit_evaluates_job", "job-search:fit:signalworks-platform", "job-search:job:platform-engineer"],
@@ -2392,6 +2561,8 @@ try {
     ["job_fit_evaluates_job", "job-search:fit:atlas-health-platform", "job-search:job:health-platform-lead"],
     ["job_fit_evaluates_job", "job-search:fit:loombridge-founding-backend", "job-search:job:founding-backend"],
     ["job_fit_evaluates_job", "job-search:fit:kerneldesk-infra", "job-search:job:infra-engineer"],
+    ["job_fit_evaluates_job", "job-search:fit:papertrail-devex", "job-search:job:papertrail-devex"],
+    ["job_fit_evaluates_job", "job-search:fit:quartzflow-automation", "job-search:job:quartzflow-automation"],
     ["application_targets_job", "job-search:application:signalworks-platform", "job-search:job:platform-engineer"],
     ["application_targets_job", "job-search:application:northstar-ai-tools", "job-search:job:ai-tools-engineer"],
     ["application_targets_job", "job-search:application:atlas-health-platform", "job-search:job:health-platform-lead"],

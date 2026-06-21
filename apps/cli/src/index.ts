@@ -123,6 +123,8 @@ async function main() {
             "event:record --type email_received --channel email [--lead-id ID | --name NAME --email EMAIL] [--subject TEXT]",
             "outreach:record --name NAME --linkedin-url URL [--external-key KEY] [--flow-id ID]",
             "outreach:backfill [--execute] [--lead-id ID] [--activity-id ID] [--limit 50]",
+            "job:actions JOB_ID",
+            "job:action JOB_ID ACTION [--reason TEXT]",
             "queue:due",
             "task:list [--status open]",
             "task:create --title TITLE [--lead-id ID] [--due-at ISO]",
@@ -374,6 +376,23 @@ async function main() {
             limit: parsed.flags.get("limit") ? Number(parsed.flags.get("limit")) : 50,
             createTasks: parsed.flags.get("no-create-tasks") !== true,
             overwriteConfirmedBody: parsed.flags.get("overwrite-confirmed-body") === true
+          })
+        })
+      );
+      break;
+
+    case "job:actions":
+      print(await requestApi(ctx, `/api/jobs/${parsed.positional[0] ?? parsed.flags.get("job-id")}/workflow`));
+      break;
+
+    case "job:action":
+      print(
+        await requestApi(ctx, `/api/jobs/${parsed.positional[0] ?? parsed.flags.get("job-id")}/actions`, {
+          method: "POST",
+          body: JSON.stringify({
+            action: parsed.positional[1] ?? parsed.flags.get("action"),
+            reason: parsed.flags.get("reason") || undefined,
+            metadata: parseJsonFlag(parsed.flags, "metadata")
           })
         })
       );

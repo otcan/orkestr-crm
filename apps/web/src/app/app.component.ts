@@ -2,6 +2,7 @@ import { CommonModule } from "@angular/common";
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from "@angular/core";
 import { FormsModule } from "@angular/forms";
 import { Router } from "@angular/router";
+import { allowedJobActions, type JobWorkflowActionKey, type JobWorkflowState, normalizeJobApplicationStage } from "@oxrm/shared";
 import { AddApplicationModalComponent } from "./add-application-modal.component";
 import { AddJobModalComponent } from "./add-job-modal.component";
 import { AppShellComponent } from "./app-shell.component";
@@ -367,7 +368,7 @@ export class AppComponent {
       if (!this.matchesTextFilter(this.rowText(row, "company", ""), this.jobCompanyFilter())) return false;
       if (!this.matchesTextFilter(this.rowText(row, "platform", this.rowText(row, "source", "")), this.jobSourceFilter())) return false;
       if (this.jobMatchFilter() !== "all" && this.matchBucket(row) !== this.jobMatchFilter()) return false;
-      if (this.jobApplicationStatusFilter() !== "all" && this.applicationStageBucket(row["applicationStage"]) !== this.jobApplicationStatusFilter()) return false;
+      if (this.jobApplicationStatusFilter() !== "all" && this.jobWorkflow(row).applicationStage !== this.jobApplicationStatusFilter()) return false;
       if (!this.matchesTextFilter(this.rowText(row, "location", ""), this.jobLocationFilter())) return false;
       if (this.jobRemoteOnlyFilter() === "remote" && !this.rowText(row, "location", "").toLowerCase().includes("remote")) return false;
       if (this.jobCvAssessedFilter() === "yes" && this.matchBucket(row) === "not") return false;
@@ -375,6 +376,14 @@ export class AppComponent {
       return true;
     });
     return this.sortJobs(filtered, this.jobSort());
+  });
+
+  readonly jobWorkflowById = computed<Record<string, JobWorkflowState>>(() => {
+    const entries = this.jobRows().map((row) => {
+      const id = this.rowText(row, "id", "");
+      return [id, allowedJobActions(row, this.linkedApplicationForJobRow(row))] as const;
+    });
+    return Object.fromEntries(entries.filter(([id]) => id));
   });
 
   readonly jobFilterControls = computed<FilterControl[]>(() => [
@@ -1231,7 +1240,21 @@ export class AppComponent {
     this.detailError.set(null);
     this.saveError.set(null);
     try {
-      const record = await this.api.getXrmRecord(id);
+      let record = await this.api.getXrmRecord(id);
+      if (record.objectType?.slug === "job" && !record.fields?.["viewedAt"]) {
+        await this.api.updateXrmRecord({
+          objectType: "job",
+          recordId: record.id,
+          displayName: record.displayName,
+          ...(record.externalKey ? { externalKey: record.externalKey } : {}),
+          fields: { ...record.fields, viewedAt: new Date().toISOString() },
+          status: record.status,
+          source: record.source ?? "web",
+          metadata: record.metadata ?? null
+        });
+        await this.refresh();
+        record = await this.api.getXrmRecord(id);
+      }
       this.selectedDetail.set({ kind: "record", item: record });
       if (record.objectType?.slug) {
         this.selectedRecordObjectType.set(record.objectType.slug);
@@ -1479,6 +1502,20 @@ export class AppComponent {
     this.selectNav(this.workspaceMode() === "outreach" ? "Pipeline" : "Jobs");
   }
 
+  handleTourStep(event: { index: number; step: { nav: string; target: string; action?: "open_ai" } }) {
+    const nav = event.step.nav as NavItem;
+    if (this.navItems().some((item) => item.label === nav)) {
+      this.selectNav(nav);
+    }
+    if (event.step.action === "open_ai") {
+      this.openConnectAi();
+    }
+    setTimeout(() => {
+      const target = document.querySelector(`[data-tour-id="${event.step.target}"]`);
+      target?.scrollIntoView({ block: "center", behavior: "smooth" });
+    }, 80);
+  }
+
   completeDemoGuide() {
     this.persistDemoGuideCompletion();
     this.demoWelcomeOpen.set(false);
@@ -1541,6 +1578,37 @@ export class AppComponent {
     });
   }
 
+  async runJobActionFromRow(event: { row: Record<string, unknown>; action: JobWorkflowActionKey }) {
+    const id = typeof event.row["id"] === "string" ? event.row["id"] : undefined;
+    if (!id) return;
+    await this.runJobAction(id, event.action);
+  }
+
+  async runJobActionFromRecord(event: { record: XrmRecord; action: JobWorkflowActionKey }) {
+    await this.runJobAction(event.record.id, event.action);
+  }
+
+  async runJobAction(jobId: string, action: JobWorkflowActionKey) {
+    const reason = action === "mark_not_fit" ? this.askNotFitReason() : undefined;
+    if (reason === null) return;
+
+    this.saving.set(true);
+    this.saveError.set(null);
+    try {
+      const result = await this.api.runJobAction(jobId, action, reason ? { reason } : {});
+      await this.refresh();
+      if (["start_application", "open_application", "continue_application", "view_application"].includes(action) && result.linkedApplication?.id) {
+        await this.selectRecordById(result.linkedApplication.id, false);
+        return;
+      }
+      await this.selectRecordById(result.job.id, false);
+    } catch (error) {
+      this.saveError.set(error instanceof Error ? error.message : "Could not run job action.");
+    } finally {
+      this.saving.set(false);
+    }
+  }
+
   async startApplicationFromJobRecord(record: XrmRecord) {
     this.startCreateApplication({
       role: this.recordField(record, "title", record.displayName),
@@ -1574,6 +1642,25 @@ export class AppComponent {
     await this.updateRecordFields(record, { applicationStage: "saved" });
   }
 
+  jobWorkflow(row: Record<string, unknown>) {
+    const id = this.rowText(row, "id", "");
+    return this.jobWorkflowById()[id] ?? allowedJobActions(row, this.linkedApplicationForJobRow(row));
+  }
+
+  private linkedApplicationForJobRow(row: Record<string, unknown>) {
+    const jobId = this.rowText(row, "id", "");
+    const jobUrl = this.rowText(row, "url", "");
+    const title = this.rowText(row, "title", "").toLowerCase();
+    const company = this.rowText(row, "company", "").toLowerCase();
+    return (
+      this.jobApplicationRows().find((application) => {
+        if (jobId && this.rowText(application, "jobId", "") === jobId) return true;
+        if (jobUrl && this.rowText(application, "jobUrl", "") === jobUrl) return true;
+        return this.rowText(application, "company", "").toLowerCase() === company && this.rowText(application, "role", "").toLowerCase() === title;
+      }) ?? null
+    );
+  }
+
   rowText(row: Record<string, unknown>, key: string, fallback = "-") {
     const value = row[key];
     if (value === undefined || value === null || value === "") return fallback;
@@ -1588,11 +1675,7 @@ export class AppComponent {
   applicationStageBucket(value: unknown) {
     const stage = String(value || "").toLowerCase();
     if (stage.includes("not a fit") || stage.includes("not_fit") || stage.includes("not-a-fit") || stage.includes("pass") || stage.includes("skip")) return "Not a fit";
-    if (stage.includes("reject") || stage.includes("archive") || stage.includes("closed")) return "Closed";
-    if (stage.includes("interview") || stage.includes("intro")) return "Interviewing";
-    if (stage.includes("applied") || stage.includes("waiting")) return "Applied";
-    if (stage.includes("fit") || stage.includes("draft") || stage.includes("prep") || stage.includes("contact")) return "Preparing";
-    return "Saved";
+    return normalizeJobApplicationStage(value);
   }
 
   matchBucket(row: Record<string, unknown>) {

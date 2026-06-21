@@ -26,7 +26,7 @@ import { FilterChange, FilterControl, ProductStageGroup } from "./models";
       <p class="result-note">{{ total }} applications · {{ shown }} shown</p>
     }
 
-    <section class="stage-board product-board" aria-label="Applications by stage">
+    <section class="stage-board product-board" data-tour-id="applications-board" aria-label="Applications by stage">
       @for (group of groups; track group.label) {
         <section class="stage-lane product-lane">
           <header>

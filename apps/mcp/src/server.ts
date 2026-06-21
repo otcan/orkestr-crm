@@ -420,6 +420,40 @@ export async function buildMcpHttpServer() {
     );
 
     server.tool(
+      "crm.get_job_actions",
+      "Return allowed workflow actions for one job posting. Use before changing job/application state.",
+      {
+        jobId: z.string().uuid()
+      },
+      async (input) => toContent(await tools.services.getJobWorkflowState(input.jobId))
+    );
+
+    server.tool(
+      "crm.run_job_action",
+      "Execute one allowed job workflow action. Invalid state transitions are rejected.",
+      {
+        jobId: z.string().uuid(),
+        action: z.enum([
+          "start_application",
+          "save_for_later",
+          "mark_not_fit",
+          "remove_from_saved",
+          "continue_application",
+          "cancel_draft",
+          "open_application",
+          "withdraw",
+          "view_application",
+          "archive",
+          "reopen",
+          "reconsider"
+        ]),
+        reason: z.string().optional(),
+        metadata: z.record(z.string(), z.unknown()).optional()
+      },
+      async (input) => toContent(await tools.services.runJobWorkflowAction(input.jobId, input))
+    );
+
+    server.tool(
       "xrm.list_views",
       "List saved views for generic oXRM object types and optional template keys.",
       {

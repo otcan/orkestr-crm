@@ -322,6 +322,6 @@ jobs:
             grep -F "\${welcome_label}" "\${welcome_dom}" >/dev/null
           }
 
-          check_demo_mode job-search-demo.oxrm.orkestr.de job_search Applications Pipeline /applications "private AI job-search copilot"
-          check_demo_mode linkedin-outreach-demo.oxrm.orkestr.de outreach Pipeline Applications /pipeline "private AI outreach copilot"
+          check_demo_mode job-search-demo.oxrm.orkestr.de job_search Applications Pipeline /applications "assistant-ready job-search workspace"
+          check_demo_mode linkedin-outreach-demo.oxrm.orkestr.de outreach Pipeline Applications /pipeline "assistant-ready outreach workspace"
           REMOTE

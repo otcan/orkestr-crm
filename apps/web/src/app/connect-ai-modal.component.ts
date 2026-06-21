@@ -1,19 +1,30 @@
 import { CommonModule } from "@angular/common";
 import { ChangeDetectionStrategy, Component, EventEmitter, Output, signal } from "@angular/core";
 
-const SETUP_COMMAND = `git clone https://github.com/otcan/oxrm.git
+const START_COMMAND = `git clone https://github.com/otcan/oxrm.git
 cd oxrm
-./oxrm codex-demo
-codex`;
+./oxrm init personal --template job-search --ports auto`;
 
-const STARTER_PROMPT = `Review my active jobs and applications.
+const CONNECT_ASSISTANT = `./oxrm -i personal urls
+./oxrm -i personal doctor`;
 
-Compare promising jobs against the CV linked to each application.
-Prioritize what needs attention today.
-Draft the next action where useful.
+const OPTIONAL_CODEX_CHECK = `./oxrm -i personal doctor --codex
+codex --version`;
+
+const STARTER_PROMPT = `You are helping me operate my local oXRM workspace.
+
+First inspect the local web/API/MCP URLs.
+Then read today's queue and the job-search views.
+Summarize what oXRM stores, what needs attention, and which records are linked.
+
+For job search:
+- inspect job postings, job-fit records, applications, CV versions, cover letters, tasks, and events
+- compare promising jobs against the linked CV/context
+- propose next actions and draft application or follow-up text
 
 Do not send anything.
-Ask before modifying records.`;
+Do not apply to jobs, email recruiters, upload CVs, or take external actions.
+Ask before modifying local records.`;
 
 @Component({
   selector: "oc-connect-ai-modal",
@@ -24,18 +35,37 @@ Ask before modifying records.`;
       <section class="modal ai-modal" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" aria-labelledby="connect-ai-title">
         <header>
           <div>
-            <h2 id="connect-ai-title">Run locally with AI</h2>
-            <p>Use the public demo to learn the workflow. Connect an assistant only to your own local oXRM instance.</p>
+            <h2 id="connect-ai-title">Run locally with an assistant</h2>
+            <p>Use the public demo to learn the workflow. Run your own local oXRM workspace before connecting Codex, Claude, Gemini, Cursor, VS Code, or another MCP-capable assistant.</p>
           </div>
           <button type="button" (click)="close.emit()">Close</button>
         </header>
 
         <section class="copy-panel">
           <div>
-            <h3>Codex setup</h3>
-            <button type="button" (click)="copy(SETUP_COMMAND)">Copy command</button>
+            <h3>1. Start oXRM</h3>
+            <button type="button" (click)="copy(START_COMMAND)">Copy command</button>
           </div>
-          <pre>{{ SETUP_COMMAND }}</pre>
+          <pre>{{ START_COMMAND }}</pre>
+        </section>
+
+        <section class="copy-panel">
+          <div>
+            <h3>2. Get local endpoints</h3>
+            <button type="button" (click)="copy(CONNECT_ASSISTANT)">Copy command</button>
+          </div>
+          <pre>{{ CONNECT_ASSISTANT }}</pre>
+        </section>
+
+        <section class="copy-panel">
+          <div>
+            <h3>3. Connect your assistant</h3>
+            <button type="button" (click)="copy(OPTIONAL_CODEX_CHECK)">Copy Codex check</button>
+          </div>
+          <p class="copy-help">
+            Register the MCP endpoint printed by <code>./oxrm -i personal urls</code> in your assistant. Use Codex, Claude, Gemini, Cursor, VS Code, or any tool that can call local MCP/HTTP tools. Codex users can run:
+          </p>
+          <pre>{{ OPTIONAL_CODEX_CHECK }}</pre>
         </section>
 
         <section class="copy-panel">
@@ -47,7 +77,7 @@ Ask before modifying records.`;
         </section>
 
         <p class="modal-note">
-          The shared public demo is read-only guidance for the workflow. Real AI work should happen on your local instance with your own data.
+          The shared public demo is read-only guidance. Real assistant work should happen on your own local instance, with human approval before external actions.
         </p>
 
         @if (copied()) {
@@ -61,7 +91,9 @@ Ask before modifying records.`;
 export class ConnectAiModalComponent {
   @Output() close = new EventEmitter<void>();
   readonly copied = signal(false);
-  readonly SETUP_COMMAND = SETUP_COMMAND;
+  readonly START_COMMAND = START_COMMAND;
+  readonly CONNECT_ASSISTANT = CONNECT_ASSISTANT;
+  readonly OPTIONAL_CODEX_CHECK = OPTIONAL_CODEX_CHECK;
   readonly STARTER_PROMPT = STARTER_PROMPT;
 
   async copy(value: string) {

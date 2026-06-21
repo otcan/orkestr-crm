@@ -2,6 +2,7 @@ import { Injectable } from "@angular/core";
 import {
   EventRow,
   HealthResponse,
+  JobWorkflowResponse,
   LeadEditForm,
   LeadRow,
   TaskEditForm,
@@ -134,6 +135,17 @@ export class CrmApiService {
 
   async getXrmRecord(id: string) {
     return this.request<XrmRecord>(`/api/xrm/records/${encodeURIComponent(id)}`);
+  }
+
+  async getJobWorkflow(id: string) {
+    return this.request<JobWorkflowResponse>(`/api/jobs/${encodeURIComponent(id)}/workflow`);
+  }
+
+  async runJobAction(id: string, action: string, input: Record<string, unknown> = {}) {
+    return this.request<JobWorkflowResponse>(`/api/jobs/${encodeURIComponent(id)}/actions`, {
+      method: "POST",
+      body: JSON.stringify({ action, ...input })
+    });
   }
 
   async createXrmRecord(input: XrmRecordInput) {

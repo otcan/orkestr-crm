@@ -1,3 +1,5 @@
+import type { JobWorkflowState } from "@oxrm/shared";
+
 export interface Metric {
   label: string;
   value: string;
@@ -337,6 +339,12 @@ export interface WorkspaceLayout {
     secondary: ViewRunResult[];
     sidebar: ViewRunResult[];
   };
+}
+
+export interface JobWorkflowResponse {
+  job: XrmRecord;
+  linkedApplication: XrmRecord | null;
+  workflow: JobWorkflowState;
 }
 
 export type NavItem =

@@ -36,6 +36,9 @@ import {
   createAssignmentSchema,
   createLeadSchema,
   createTaskSchema,
+  allowedJobActions,
+  isJobWorkflowActionAllowed,
+  runJobWorkflowActionSchema,
   OXRM_PRODUCT_NAME,
   OXRM_PRODUCT_SLUG,
   OXRM_PRODUCT_VERSION,
@@ -420,6 +423,23 @@ function runViewPipeline<T>(rows: T[], filters: ViewFilter[], sort: ViewSort[], 
 
 function jsonObject(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function serviceError(message: string, statusCode: number, code = message) {
+  const error = new Error(message) as Error & { statusCode: number; code: string };
+  error.statusCode = statusCode;
+  error.code = code;
+  return error;
+}
+
+function xrmFields(record: { fields?: unknown } | null | undefined): Record<string, unknown> {
+  return jsonObject(record?.fields);
+}
+
+function xrmField(record: { fields?: unknown; [key: string]: unknown } | null | undefined, key: string, fallback = "") {
+  const fields = xrmFields(record);
+  const value = fields[key] ?? record?.[key];
+  return value === undefined || value === null || value === "" ? fallback : String(value);
 }
 
 function summarizeRelationship(
@@ -1429,6 +1449,184 @@ export function createCrmServices({ db, backupsRequired = false }: ServiceContex
         orderBy: [desc(activities.occurredAt)],
         limit: input.limit ?? 100
       });
+    },
+
+    async getLinkedApplicationForJob(jobId: string) {
+      const relationshipType = await db.query.xrmRelationshipTypes.findFirst({
+        where: eq(xrmRelationshipTypes.key, "application_targets_job")
+      });
+      const relationship = relationshipType
+        ? await db.query.xrmRecordRelationships.findFirst({
+            where: and(
+              eq(xrmRecordRelationships.relationshipTypeId, relationshipType.id),
+              eq(xrmRecordRelationships.targetRecordId, jobId),
+              isNull(xrmRecordRelationships.deletedAt)
+            ),
+            with: {
+              sourceRecord: true
+            },
+            orderBy: [desc(xrmRecordRelationships.updatedAt)]
+          })
+        : undefined;
+      if (relationship?.sourceRecord?.id) {
+        return this.getXrmRecord(relationship.sourceRecord.id);
+      }
+
+      const job = await this.getXrmRecord(jobId);
+      const applicationId = xrmField(job, "applicationId", "");
+      if (!applicationId) {
+        return null;
+      }
+      return this.getXrmRecord(applicationId);
+    },
+
+    async getJobWorkflowState(jobId: string) {
+      const job = await this.getXrmRecord(jobId);
+      if (!job || job.objectType?.slug !== "job") {
+        throw serviceError("job_not_found", 404, "job_not_found");
+      }
+      const linkedApplication = await this.getLinkedApplicationForJob(jobId);
+      return {
+        job,
+        linkedApplication,
+        workflow: allowedJobActions(job, linkedApplication)
+      };
+    },
+
+    async runJobWorkflowAction(jobId: string, input: unknown) {
+      const parsed = runJobWorkflowActionSchema.parse(input);
+      const current = await this.getJobWorkflowState(jobId);
+      if (!isJobWorkflowActionAllowed(current.workflow, parsed.action)) {
+        throw serviceError("job_action_not_allowed", 409, "job_action_not_allowed");
+      }
+
+      const now = new Date().toISOString();
+      const jobFields = xrmFields(current.job);
+      const title = xrmField(current.job, "title", current.job.displayName);
+      const company = xrmField(current.job, "company", "Company");
+      const jobObjectType = current.job.objectType?.slug ?? "job";
+
+      const updateJob = async (fields: Record<string, unknown>) =>
+        this.upsertXrmRecord({
+          objectType: jobObjectType,
+          recordId: current.job.id,
+          displayName: current.job.displayName,
+          externalKey: current.job.externalKey ?? undefined,
+          fields: { ...jobFields, ...fields, viewedAt: jobFields["viewedAt"] || now },
+          status: current.job.status,
+          source: current.job.source ?? "job_workflow",
+          metadata: current.job.metadata ?? {}
+        });
+
+      const updateApplication = async (fields: Record<string, unknown>) => {
+        if (!current.linkedApplication) {
+          throw serviceError("linked_application_not_found", 409, "linked_application_not_found");
+        }
+        const appFields = xrmFields(current.linkedApplication);
+        return this.upsertXrmRecord({
+          objectType: current.linkedApplication.objectType?.slug ?? "application",
+          recordId: current.linkedApplication.id,
+          displayName: current.linkedApplication.displayName,
+          externalKey: current.linkedApplication.externalKey ?? undefined,
+          fields: { ...appFields, ...fields, lastTouchAt: now },
+          status: current.linkedApplication.status,
+          source: current.linkedApplication.source ?? "job_workflow",
+          metadata: current.linkedApplication.metadata ?? {}
+        });
+      };
+
+      switch (parsed.action) {
+        case "start_application": {
+          if (current.linkedApplication) {
+            throw serviceError("duplicate_active_application", 409, "duplicate_active_application");
+          }
+          const createdApplication = await this.upsertXrmRecord({
+            objectType: "application",
+            externalKey: `job-application:${jobId}`,
+            displayName: `${title} at ${company}`,
+            fields: {
+              role: title,
+              company,
+              stage: "Preparing",
+              fitRate: jobFields["fitRate"],
+              responsiblePerson: jobFields["responsiblePerson"] ?? jobFields["contact"],
+              jobId,
+              jobUrl: jobFields["url"],
+              source: "job_workflow",
+              appliedAt: "",
+              lastTouchAt: now,
+              nextActionAt: now,
+              nextAction: "Choose CV, tailor the cover letter, and review before applying.",
+              cvVersion: jobFields["recommendedCv"] ?? "",
+              coverLetterVersion: ""
+            },
+            source: "job_workflow",
+            metadata: { templateKey: "job_search", source: "job_workflow" }
+          });
+          if (!createdApplication) {
+            throw serviceError("application_create_failed", 500, "application_create_failed");
+          }
+          await this.linkXrmRecords({
+            relationshipType: "application_targets_job",
+            sourceRecordId: createdApplication.id,
+            targetRecordId: jobId,
+            source: "job_workflow",
+            metadata: { action: parsed.action }
+          });
+          await updateJob({
+            applicationId: createdApplication.id,
+            applicationStage: "Preparing",
+            decisionState: "Reviewing",
+            lastTouchAt: now,
+            nextActionAt: now,
+            nextAction: "Continue application draft: choose CV and cover letter."
+          });
+          break;
+        }
+        case "save_for_later":
+          await updateJob({ decisionState: "Saved", applicationStage: "Not started", lastTouchAt: now });
+          break;
+        case "remove_from_saved":
+        case "reconsider":
+          await updateJob({ decisionState: "Reviewing", applicationStage: "Not started", lastTouchAt: now });
+          break;
+        case "mark_not_fit":
+          await updateJob({
+            decisionState: "Not a fit",
+            applicationStage: "Not started",
+            notFitReason: parsed.reason ?? "Marked not a fit",
+            lastTouchAt: now,
+            nextActionAt: "",
+            nextAction: ""
+          });
+          break;
+        case "cancel_draft":
+          await updateApplication({ stage: "Closed", closingReason: "Withdrawn", nextActionAt: "", nextAction: "Draft canceled." });
+          await updateJob({ applicationStage: "Closed", closingReason: "Withdrawn", decisionState: "Reviewing", lastTouchAt: now });
+          break;
+        case "withdraw":
+          await updateApplication({ stage: "Closed", closingReason: "Withdrawn", nextActionAt: "", nextAction: "Application withdrawn." });
+          await updateJob({ applicationStage: "Closed", closingReason: "Withdrawn", decisionState: "Reviewing", lastTouchAt: now });
+          break;
+        case "archive":
+          await updateJob({ decisionState: "Archived", lastTouchAt: now });
+          break;
+        case "reopen":
+          if (current.linkedApplication) {
+            await updateApplication({ stage: "Preparing", closingReason: "", nextAction: "Reopened. Review the application packet.", nextActionAt: now });
+            await updateJob({ applicationStage: "Preparing", closingReason: "", decisionState: "Reviewing", nextActionAt: now });
+          } else {
+            await updateJob({ decisionState: "Reviewing", applicationStage: "Not started", closingReason: "", lastTouchAt: now });
+          }
+          break;
+        case "open_application":
+        case "continue_application":
+        case "view_application":
+          await updateJob({ lastTouchAt: now });
+          break;
+      }
+
+      return this.getJobWorkflowState(jobId);
     },
 
     async listXrmSemanticFields(input: { limit?: number | undefined } = {}) {

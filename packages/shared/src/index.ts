@@ -164,6 +164,220 @@ export const planExecutionResultSchema = z.object({
   finishedAt: z.string().datetime().optional()
 });
 
+export const jobDecisionStateSchema = z.enum(["New", "Reviewing", "Saved", "Not a fit", "Archived"]);
+export const jobApplicationStageSchema = z.enum(["Not started", "Preparing", "Applied", "Interviewing", "Closed"]);
+export const jobClosingReasonSchema = z.enum(["Rejected", "Withdrawn", "Offer accepted", "Position closed", "No response"]);
+export const jobWorkflowActionKeySchema = z.enum([
+  "start_application",
+  "save_for_later",
+  "mark_not_fit",
+  "remove_from_saved",
+  "continue_application",
+  "cancel_draft",
+  "open_application",
+  "withdraw",
+  "view_application",
+  "archive",
+  "reopen",
+  "reconsider"
+]);
+
+export const runJobWorkflowActionSchema = z.object({
+  action: jobWorkflowActionKeySchema,
+  reason: z.string().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional()
+});
+
+export type JobDecisionState = z.infer<typeof jobDecisionStateSchema>;
+export type JobApplicationStage = z.infer<typeof jobApplicationStageSchema>;
+export type JobClosingReason = z.infer<typeof jobClosingReasonSchema>;
+export type JobWorkflowActionKey = z.infer<typeof jobWorkflowActionKeySchema>;
+
+export interface JobWorkflowAction {
+  key: JobWorkflowActionKey;
+  label: string;
+  tone: "primary" | "neutral" | "danger";
+}
+
+export type JobWorkflowRecordLike = object & {
+  id?: unknown;
+  fields?: unknown;
+};
+
+export interface JobWorkflowState {
+  jobId?: string;
+  linkedApplicationId?: string;
+  decisionState: JobDecisionState;
+  applicationStage: JobApplicationStage;
+  closingReason?: JobClosingReason;
+  hasLinkedApplication: boolean;
+  isNew: boolean;
+  primaryAction: JobWorkflowAction;
+  secondaryActions: JobWorkflowAction[];
+  allowedActions: JobWorkflowAction[];
+}
+
+const jobWorkflowActions: Record<JobWorkflowActionKey, JobWorkflowAction> = {
+  start_application: { key: "start_application", label: "Start application", tone: "primary" },
+  save_for_later: { key: "save_for_later", label: "Save for later", tone: "neutral" },
+  mark_not_fit: { key: "mark_not_fit", label: "Mark not a fit", tone: "neutral" },
+  remove_from_saved: { key: "remove_from_saved", label: "Remove from saved", tone: "neutral" },
+  continue_application: { key: "continue_application", label: "Continue application", tone: "primary" },
+  cancel_draft: { key: "cancel_draft", label: "Cancel draft", tone: "danger" },
+  open_application: { key: "open_application", label: "Open application", tone: "primary" },
+  withdraw: { key: "withdraw", label: "Withdraw", tone: "danger" },
+  view_application: { key: "view_application", label: "View application", tone: "neutral" },
+  archive: { key: "archive", label: "Archive", tone: "neutral" },
+  reopen: { key: "reopen", label: "Reopen", tone: "neutral" },
+  reconsider: { key: "reconsider", label: "Reconsider", tone: "primary" }
+};
+
+function workflowField(record: JobWorkflowRecordLike | null | undefined, key: string): unknown {
+  if (!record) {
+    return undefined;
+  }
+  const direct = (record as Record<string, unknown>)[key];
+  if (direct !== undefined && direct !== null && direct !== "") {
+    return direct;
+  }
+  const fields = record.fields;
+  return fields && typeof fields === "object" ? (fields as Record<string, unknown>)[key] : undefined;
+}
+
+function normalizedText(value: unknown) {
+  return String(value ?? "").trim().toLowerCase().replace(/[_-]+/g, " ");
+}
+
+export function normalizeJobDecisionState(value: unknown, fallback: JobDecisionState = "New"): JobDecisionState {
+  const state = normalizedText(value);
+  if (state === "new") return "New";
+  if (state === "reviewing" || state === "review" || state === "fit review") return "Reviewing";
+  if (state === "saved" || state === "save for later") return "Saved";
+  if (state === "not a fit" || state === "not fit" || state === "pass" || state === "skip") return "Not a fit";
+  if (state === "archived" || state === "archive") return "Archived";
+  return fallback;
+}
+
+export function normalizeJobApplicationStage(value: unknown): JobApplicationStage {
+  const stage = normalizedText(value);
+  if (!stage || stage === "new" || stage === "saved" || stage === "fit review" || stage === "reviewing") return "Not started";
+  if (stage.includes("reject") || stage.includes("withdraw") || stage.includes("closed") || stage.includes("offer accepted") || stage.includes("position closed") || stage.includes("no response")) return "Closed";
+  if (stage.includes("interview") || stage.includes("intro")) return "Interviewing";
+  if (stage.includes("applied") || stage.includes("waiting") || stage.includes("contact") || stage.includes("sent")) return "Applied";
+  if (stage.includes("prep") || stage.includes("draft") || stage.includes("packet")) return "Preparing";
+  return "Not started";
+}
+
+export function normalizeJobClosingReason(value: unknown): JobClosingReason | undefined {
+  const reason = normalizedText(value);
+  if (reason.includes("reject")) return "Rejected";
+  if (reason.includes("withdraw")) return "Withdrawn";
+  if (reason.includes("offer")) return "Offer accepted";
+  if (reason.includes("position")) return "Position closed";
+  if (reason.includes("no response")) return "No response";
+  return undefined;
+}
+
+export function isActiveJobApplicationStage(stage: JobApplicationStage) {
+  return stage !== "Not started" && stage !== "Closed";
+}
+
+export function isFreshNewJob(job: JobWorkflowRecordLike, linkedApplication?: JobWorkflowRecordLike | null, now = Date.now()) {
+  const discoveredAt = workflowField(job, "discoveredAt");
+  const discoveredTime = typeof discoveredAt === "string" || typeof discoveredAt === "number" ? new Date(discoveredAt).getTime() : Number.NaN;
+  const viewedAt = workflowField(job, "viewedAt");
+  const applicationId = workflowField(job, "applicationId") ?? linkedApplication?.id;
+  const decisionState = normalizeJobDecisionState(workflowField(job, "decisionState"), "New");
+
+  return (
+    decisionState === "New" &&
+    !viewedAt &&
+    !applicationId &&
+    !Number.isNaN(discoveredTime) &&
+    now - discoveredTime <= 48 * 60 * 60 * 1000
+  );
+}
+
+export function allowedJobActions(
+  job: JobWorkflowRecordLike,
+  linkedApplication?: JobWorkflowRecordLike | null,
+  now = Date.now()
+): JobWorkflowState {
+  const linkedApplicationId = typeof linkedApplication?.id === "string" ? linkedApplication.id : stringOrUndefined(workflowField(job, "applicationId"));
+  const hasLinkedApplication = Boolean(linkedApplicationId);
+  const linkedStage = linkedApplication ? normalizeJobApplicationStage(workflowField(linkedApplication, "stage")) : undefined;
+  const applicationStage = hasLinkedApplication
+    ? normalizeJobApplicationStage(linkedStage ?? workflowField(job, "applicationStage"))
+    : normalizeJobApplicationStage(workflowField(job, "applicationStage"));
+  const closingReason = normalizeJobClosingReason(workflowField(linkedApplication, "closingReason") ?? workflowField(job, "closingReason"));
+  const decisionState = normalizeJobDecisionState(workflowField(job, "decisionState"), fallbackDecisionState(job, applicationStage, hasLinkedApplication));
+
+  let primary: JobWorkflowActionKey = "start_application";
+  let secondary: JobWorkflowActionKey[] = ["save_for_later", "mark_not_fit"];
+
+  if (applicationStage === "Preparing") {
+    primary = "continue_application";
+    secondary = ["cancel_draft", "mark_not_fit"];
+  } else if (applicationStage === "Applied" || applicationStage === "Interviewing") {
+    primary = "open_application";
+    secondary = ["withdraw"];
+  } else if (applicationStage === "Closed") {
+    primary = "view_application";
+    secondary = ["archive", "reopen"];
+  } else if (decisionState === "Saved") {
+    primary = "start_application";
+    secondary = ["remove_from_saved", "mark_not_fit"];
+  } else if (decisionState === "Not a fit") {
+    primary = "reconsider";
+    secondary = ["archive"];
+  } else if (decisionState === "Archived") {
+    primary = "reconsider";
+    secondary = [];
+  }
+
+  if (hasLinkedApplication && applicationStage === "Not started") {
+    primary = "open_application";
+    secondary = [];
+  }
+
+  if (hasLinkedApplication) {
+    secondary = secondary.filter((action) => action !== "mark_not_fit" && action !== "save_for_later");
+  }
+
+  const primaryAction = jobWorkflowActions[primary];
+  const secondaryActions = secondary.map((action) => jobWorkflowActions[action]);
+
+  return {
+    ...(typeof job.id === "string" ? { jobId: job.id } : {}),
+    ...(linkedApplicationId ? { linkedApplicationId } : {}),
+    decisionState,
+    applicationStage,
+    ...(closingReason ? { closingReason } : {}),
+    hasLinkedApplication,
+    isNew: isFreshNewJob(job, linkedApplication, now),
+    primaryAction,
+    secondaryActions,
+    allowedActions: [primaryAction, ...secondaryActions]
+  };
+}
+
+export function isJobWorkflowActionAllowed(state: JobWorkflowState, action: JobWorkflowActionKey) {
+  return state.allowedActions.some((candidate) => candidate.key === action);
+}
+
+function fallbackDecisionState(job: JobWorkflowRecordLike, applicationStage: JobApplicationStage, hasLinkedApplication: boolean): JobDecisionState {
+  const status = normalizedText(workflowField(job, "status"));
+  if (status === "saved") return "Saved";
+  if (status.includes("reject") || status.includes("archive")) return "Archived";
+  if (status.includes("not") && status.includes("fit")) return "Not a fit";
+  if (hasLinkedApplication || isActiveJobApplicationStage(applicationStage) || applicationStage === "Closed") return "Reviewing";
+  return "New";
+}
+
+function stringOrUndefined(value: unknown) {
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
 export const createLeadSchema = z.object({
   fullName: z.string().min(1),
   firstName: z.string().optional(),

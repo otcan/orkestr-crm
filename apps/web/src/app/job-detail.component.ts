@@ -1,8 +1,9 @@
 import { CommonModule } from "@angular/common";
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from "@angular/core";
+import { allowedJobActions, type JobWorkflowActionKey, type JobWorkflowState } from "@oxrm/shared";
 import { XrmRecord } from "./models";
 
-type JobDetailTab = "overview" | "match" | "activity";
+type JobDetailTab = "overview" | "description" | "match" | "activity";
 
 @Component({
   selector: "oc-job-detail",
@@ -11,6 +12,7 @@ type JobDetailTab = "overview" | "match" | "activity";
   template: `
     <section class="detail-tabs" aria-label="Job detail tabs">
       <button type="button" [class.active]="tab === 'overview'" (click)="tab = 'overview'">Overview</button>
+      <button type="button" [class.active]="tab === 'description'" (click)="tab = 'description'">Description</button>
       <button type="button" [class.active]="tab === 'match'" (click)="tab = 'match'">Match</button>
       <button type="button" [class.active]="tab === 'activity'" (click)="tab = 'activity'">Activity</button>
     </section>
@@ -24,15 +26,37 @@ type JobDetailTab = "overview" | "match" | "activity";
           <div><dt>Source</dt><dd>{{ field("platform", field("source", "Manual")) }}</dd></div>
           <div><dt>Published</dt><dd>{{ dateField("publishedAt", "Unknown") }}</dd></div>
           <div><dt>Discovered</dt><dd>{{ dateField("discoveredAt", dateField("createdAt", "Unknown")) }}</dd></div>
-          <div><dt>Application status</dt><dd>{{ human(field("applicationStage", "Not started")) }}</dd></div>
+          <div><dt>Decision</dt><dd>{{ workflowState.decisionState }}</dd></div>
+          <div><dt>Application</dt><dd>{{ workflowState.applicationStage }}</dd></div>
         </dl>
         <div class="detail-actions stacked">
-          <button type="button" class="primary" (click)="startApplication.emit(record)">Start application</button>
-          <button type="button" (click)="markNotFit.emit(record)">Mark not a fit</button>
+          <button type="button" class="primary" (click)="runAction.emit(workflowState.primaryAction.key)">
+            {{ workflowState.primaryAction.label }}
+          </button>
+          @for (action of workflowState.secondaryActions; track action.key) {
+            <button type="button" (click)="runAction.emit(action.key)">{{ action.label }}</button>
+          }
           @if (field("url", "")) {
             <a class="button-link" [href]="field('url')" target="_blank" rel="noreferrer">Open job posting</a>
           }
         </div>
+      </section>
+    }
+
+    @if (tab === 'description') {
+      <section class="detail-section">
+        <article class="detail-long-text">
+          <h3>{{ field("title", record.displayName) }}</h3>
+          <p>{{ field("fullDescription", field("description", "No job description has been captured yet.")) }}</p>
+          @if (field("requirements", "")) {
+            <h4>Requirements</h4>
+            <p>{{ field("requirements") }}</p>
+          }
+          @if (field("responsibilities", "")) {
+            <h4>Responsibilities</h4>
+            <p>{{ field("responsibilities") }}</p>
+          }
+        </article>
       </section>
     }
 
@@ -58,10 +82,14 @@ type JobDetailTab = "overview" | "match" | "activity";
 })
 export class JobDetailComponent {
   @Input({ required: true }) record!: XrmRecord;
-  @Output() startApplication = new EventEmitter<XrmRecord>();
-  @Output() markNotFit = new EventEmitter<XrmRecord>();
+  @Input() workflow: JobWorkflowState | null = null;
+  @Output() runAction = new EventEmitter<JobWorkflowActionKey>();
 
   tab: JobDetailTab = "overview";
+
+  get workflowState() {
+    return this.workflow ?? allowedJobActions(this.record);
+  }
 
   field(key: string, fallback = "-") {
     const value = this.record.fields?.[key];

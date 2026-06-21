@@ -19,7 +19,7 @@ import { SummaryMetricsComponent } from "./summary-metrics.component";
     <oc-summary-metrics [label]="mode === 'outreach' ? 'Outreach summary' : 'Job search summary'" [metrics]="metrics" />
 
     <section class="today-grid">
-      <article class="panel next-actions-panel">
+      <article class="panel next-actions-panel" data-tour-id="today-actions">
         <header>
           <div>
             <h2>Next actions</h2>

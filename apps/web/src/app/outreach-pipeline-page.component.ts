@@ -22,7 +22,7 @@ import { FilterChange, FilterControl, OutreachPipelineRow, ProductStageGroup } f
       (primaryAction)="add.emit()"
     />
 
-    <section class="stage-board product-board" aria-label="Outreach pipeline">
+    <section class="stage-board product-board" data-tour-id="pipeline-board" aria-label="Outreach pipeline">
       @for (group of groups; track group.label) {
         <section class="stage-lane product-lane">
           <header>

@@ -1,6 +1,7 @@
 import { CommonModule } from "@angular/common";
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from "@angular/core";
 import { FormsModule } from "@angular/forms";
+import { allowedJobActions, type JobWorkflowActionKey, type JobWorkflowState } from "@oxrm/shared";
 import { FilterBarComponent } from "./filter-bar.component";
 import { FilterChange, FilterControl, PageResult } from "./models";
 
@@ -25,7 +26,7 @@ import { FilterChange, FilterControl, PageResult } from "./models";
 
     <section class="panel product-list-panel">
       <div class="table-wrap jobs-table-wrap">
-        <table class="view-table jobs-table">
+        <table class="view-table jobs-table" data-tour-id="jobs-table">
           <thead>
             <tr>
               <th>Role</th>
@@ -35,6 +36,7 @@ import { FilterChange, FilterControl, PageResult } from "./models";
               <th>Added</th>
               <th>Match</th>
               <th>Application</th>
+              <th class="action-col">Action</th>
             </tr>
           </thead>
           <tbody>
@@ -45,11 +47,7 @@ import { FilterChange, FilterControl, PageResult } from "./models";
                   @if (isNew(row)) {
                     <span class="new-badge">New</span>
                   }
-                  <div class="row-actions">
-                    <button type="button" (click)="startApplication.emit(row); $event.stopPropagation()">Start application</button>
-                    <button type="button" (click)="markNotFit.emit(row); $event.stopPropagation()">Mark not a fit</button>
-                    <button type="button" (click)="saveLater.emit(row); $event.stopPropagation()">Save for later</button>
-                  </div>
+                  <small>{{ text(row, 'nextAction', 'Review posting') }}</small>
                 </td>
                 <td>{{ text(row, 'company') }}</td>
                 <td>{{ text(row, 'location') }}</td>
@@ -60,7 +58,31 @@ import { FilterChange, FilterControl, PageResult } from "./models";
                     {{ fitLabel(row) }}
                   </em>
                 </td>
-                <td>{{ human(row['applicationStage'] || 'not_started') }}</td>
+                <td>{{ workflow(row).applicationStage }}</td>
+                <td class="action-col" (click)="$event.stopPropagation()">
+                  <div class="row-action-cell">
+                    <button
+                      type="button"
+                      class="primary compact"
+                      data-tour-id="start-application"
+                      (click)="runAction.emit({ row, action: workflow(row).primaryAction.key })"
+                    >
+                      {{ workflow(row).primaryAction.label }}
+                    </button>
+                    @if (workflow(row).secondaryActions.length) {
+                      <details class="overflow-menu">
+                        <summary aria-label="More actions">...</summary>
+                        <div>
+                          @for (action of workflow(row).secondaryActions; track action.key) {
+                            <button type="button" (click)="runAction.emit({ row, action: action.key })">
+                              {{ action.label }}
+                            </button>
+                          }
+                        </div>
+                      </details>
+                    }
+                  </div>
+                </td>
               </tr>
             }
           </tbody>
@@ -72,9 +94,9 @@ import { FilterChange, FilterControl, PageResult } from "./models";
           <p>No jobs match these filters.</p>
           <button type="button" (click)="clearFilters.emit()">Clear filters</button>
         </div>
-      } @else {
+      } @else if (result.pageCount > 1 || result.total > result.pageSize) {
         <footer class="pagination-bar">
-          <span>{{ result.start }}-{{ result.end }} of {{ result.total }}</span>
+          <span>{{ result.shown === result.total ? result.total + ' jobs' : result.shown + ' of ' + result.total + ' jobs' }}</span>
           <div>
             <button type="button" [disabled]="result.page <= 1" (click)="pageChange.emit(result.page - 1)">Previous</button>
             @for (page of pageNumbers(); track page) {
@@ -109,6 +131,7 @@ export class JobJobsPageComponent {
     end: 0,
     hasNext: false
   };
+  @Input() workflowById: Record<string, JobWorkflowState> = {};
   @Input() selectedId = "";
   @Output() searchChange = new EventEmitter<string>();
   @Output() filterChange = new EventEmitter<FilterChange>();
@@ -117,9 +140,7 @@ export class JobJobsPageComponent {
   @Output() pageSizeChange = new EventEmitter<number>();
   @Output() add = new EventEmitter<void>();
   @Output() open = new EventEmitter<Record<string, unknown>>();
-  @Output() startApplication = new EventEmitter<Record<string, unknown>>();
-  @Output() markNotFit = new EventEmitter<Record<string, unknown>>();
-  @Output() saveLater = new EventEmitter<Record<string, unknown>>();
+  @Output() runAction = new EventEmitter<{ row: Record<string, unknown>; action: JobWorkflowActionKey }>();
 
   readonly Number = Number;
 
@@ -177,9 +198,11 @@ export class JobJobsPageComponent {
   }
 
   isNew(row: Record<string, unknown>) {
-    const value = this.addedDate(row);
-    const date = new Date(value);
-    return !Number.isNaN(date.getTime()) && Date.now() - date.getTime() <= 48 * 60 * 60 * 1000;
+    return this.workflow(row).isNew;
+  }
+
+  workflow(row: Record<string, unknown>) {
+    return this.workflowById[this.text(row, "id", "")] ?? allowedJobActions(row);
   }
 
   pageNumbers() {

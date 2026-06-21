@@ -1,6 +1,7 @@
 import { CommonModule } from "@angular/common";
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, ViewChild } from "@angular/core";
 import { ActivityListComponent } from "./activity-list.component";
+import { allowedJobActions, type JobWorkflowActionKey, type JobWorkflowState } from "@oxrm/shared";
 import { EventDetailComponent } from "./event-detail.component";
 import { JobApplicationDetailComponent } from "./job-application-detail.component";
 import { JobDetailComponent } from "./job-detail.component";
@@ -158,8 +159,8 @@ type DetailTab = "overview" | "draft" | "activity";
             } @else if (isJobRecord(selection.item)) {
               <oc-job-detail
                 [record]="selection.item"
-                (startApplication)="startApplicationFromJob.emit($event)"
-                (markNotFit)="markJobNotFit.emit($event)"
+                [workflow]="jobWorkflow(selection.item)"
+                (runAction)="runJobAction.emit({ record: selection.item, action: $event })"
               />
 
               <details class="advanced-detail">
@@ -223,8 +224,7 @@ export class DetailDrawerComponent {
   @Output() editDraft = new EventEmitter<XrmRecord>();
   @Output() markApproved = new EventEmitter<XrmRecord>();
   @Output() dismiss = new EventEmitter<XrmRecord>();
-  @Output() startApplicationFromJob = new EventEmitter<XrmRecord>();
-  @Output() markJobNotFit = new EventEmitter<XrmRecord>();
+  @Output() runJobAction = new EventEmitter<{ record: XrmRecord; action: JobWorkflowActionKey }>();
   @Output() openCvLibrary = new EventEmitter<void>();
 
   @ViewChild(LeadDetailComponent) leadDetail?: LeadDetailComponent;
@@ -266,6 +266,15 @@ export class DetailDrawerComponent {
 
   isApplicationRecord(record: XrmRecord) {
     return this.mode === "job_search" && record.objectType?.slug === "application";
+  }
+
+  jobWorkflow(record: XrmRecord): JobWorkflowState {
+    const linked = record.targetRelationships?.find(
+      (relationship) =>
+        relationship.relationshipType?.key === "application_targets_job" &&
+        relationship.sourceRecord?.objectType?.slug === "application"
+    )?.sourceRecord;
+    return allowedJobActions(record, linked ?? null);
   }
 
   field(record: XrmRecord, key: string, fallback = "-") {
