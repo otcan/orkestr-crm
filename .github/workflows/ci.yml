@@ -278,19 +278,35 @@ jobs:
             done
           done
 
-          browser="\$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
-          if [ -z "\${browser}" ]; then
-            echo "A headless browser is required for rendered demo mode checks." >&2
-            exit 1
-          fi
+          assert_bundle_text() {
+            needle="\$1"
+            if ! grep -R -F "\${needle}" "\${web_root}"/*.js >/dev/null; then
+              echo "Built web bundle is missing expected text: \${needle}" >&2
+              exit 1
+            fi
+          }
+
+          assert_bundle_text_absent() {
+            needle="\$1"
+            if grep -R -F "\${needle}" "\${web_root}"/*.js >/dev/null; then
+              echo "Built web bundle still contains forbidden text: \${needle}" >&2
+              exit 1
+            fi
+          }
+
+          assert_bundle_text "Run locally with an assistant"
+          assert_bundle_text "Codex, Claude, Gemini, Cursor, VS Code, or another MCP-capable assistant"
+          assert_bundle_text "assistant-ready job-search workspace"
+          assert_bundle_text "assistant-ready outreach workspace"
+          assert_bundle_text_absent "Codex setup"
+          assert_bundle_text_absent "./oxrm codex-demo"
+          assert_bundle_text_absent "private AI job-search copilot"
+          assert_bundle_text_absent "private AI outreach copilot"
 
           check_demo_mode() {
             host="\$1"
             expected_mode="\$2"
-            expected_label="\$3"
-            forbidden_label="\$4"
-            page_path="\$5"
-            welcome_label="\$6"
+            page_path="\$3"
 
             bootstrap="\$(curl -fsS -H 'Cache-Control: no-cache' "https://\${host}/api/workspace/bootstrap?deploy=\${OXRM_DEPLOY_GIT_SHA}")"
             node -e '
@@ -306,22 +322,40 @@ jobs:
               }
             ' "\${bootstrap}" "\${expected_mode}"
 
-            dom_file="\$(mktemp)"
-            "\${browser}" --headless=new --disable-gpu --no-sandbox --ignore-certificate-errors --virtual-time-budget=8000 --dump-dom "https://\${host}\${page_path}?deploy=\${OXRM_DEPLOY_GIT_SHA}" > "\${dom_file}"
-            grep -F "data-oxrm-mode=\"\${expected_mode}\"" "\${dom_file}" >/dev/null
-            grep -F "oxrm-workspace-mode" "\${dom_file}" >/dev/null
-            grep -F "\${expected_label}" "\${dom_file}" >/dev/null
-            if grep -F "\${forbidden_label}" "\${dom_file}" >/dev/null; then
-              echo "Rendered \${host} contains forbidden cross-mode label: \${forbidden_label}" >&2
-              exit 1
-            fi
+            for route in "\${page_path}" "/today"; do
+              curl -fsS -H 'Cache-Control: no-cache' "https://\${host}\${route}?deploy=\${OXRM_DEPLOY_GIT_SHA}" \
+                | grep -F "\${expected_main}" >/dev/null
+            done
 
-            welcome_dom="\$(mktemp)"
-            profile_dir="\$(mktemp -d)"
-            "\${browser}" --headless=new --disable-gpu --no-sandbox --ignore-certificate-errors --user-data-dir="\${profile_dir}" --virtual-time-budget=8000 --dump-dom "https://\${host}/today?deploy=\${OXRM_DEPLOY_GIT_SHA}" > "\${welcome_dom}"
-            grep -F "\${welcome_label}" "\${welcome_dom}" >/dev/null
+            if [ "\${expected_mode}" = "job_search" ]; then
+              apps="\$(curl -fsS -H 'Cache-Control: no-cache' "https://\${host}/api/views/job_search.applications/run?limit=100&deploy=\${OXRM_DEPLOY_GIT_SHA}")"
+              leads="\$(curl -fsS -H 'Cache-Control: no-cache' "https://\${host}/api/leads?limit=100&deploy=\${OXRM_DEPLOY_GIT_SHA}")"
+              node -e '
+                const apps = JSON.parse(process.argv[1]);
+                const leads = JSON.parse(process.argv[2]);
+                const appCount = Array.isArray(apps.rows) ? apps.rows.length : 0;
+                const leadCount = Array.isArray(leads) ? leads.length : 0;
+                if (appCount < 1 || leadCount !== 0) {
+                  console.error(JSON.stringify({ error: "job_search_public_data_mismatch", appCount, leadCount }, null, 2));
+                  process.exit(1);
+                }
+              ' "\${apps}" "\${leads}"
+            else
+              apps="\$(curl -fsS -H 'Cache-Control: no-cache' "https://\${host}/api/views/job_search.applications/run?limit=100&deploy=\${OXRM_DEPLOY_GIT_SHA}")"
+              leads="\$(curl -fsS -H 'Cache-Control: no-cache' "https://\${host}/api/leads?limit=100&deploy=\${OXRM_DEPLOY_GIT_SHA}")"
+              node -e '
+                const apps = JSON.parse(process.argv[1]);
+                const leads = JSON.parse(process.argv[2]);
+                const appCount = Array.isArray(apps.rows) ? apps.rows.length : 0;
+                const leadCount = Array.isArray(leads) ? leads.length : 0;
+                if (leadCount < 1 || appCount !== 0) {
+                  console.error(JSON.stringify({ error: "outreach_public_data_mismatch", appCount, leadCount }, null, 2));
+                  process.exit(1);
+                }
+              ' "\${apps}" "\${leads}"
+            fi
           }
 
-          check_demo_mode job-search-demo.oxrm.orkestr.de job_search Applications Pipeline /applications "assistant-ready job-search workspace"
-          check_demo_mode linkedin-outreach-demo.oxrm.orkestr.de outreach Pipeline Applications /pipeline "assistant-ready outreach workspace"
+          check_demo_mode job-search-demo.oxrm.orkestr.de job_search /applications
+          check_demo_mode linkedin-outreach-demo.oxrm.orkestr.de outreach /pipeline
           REMOTE

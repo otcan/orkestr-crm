@@ -41,8 +41,12 @@ Non-interactive examples:
 5. Draft messages only.
 6. Record sent messages, replies, outcomes, and follow-up tasks after the human acts externally.
 
-## Codex rule
+## Assistant rule
 
-Codex can read queues, inspect records, summarize context, score fit, prepare drafts, update local records, and create tasks.
+Codex, Claude, Gemini, Cursor, VS Code, or another MCP-capable assistant can
+read queues, inspect records, summarize context, score fit, prepare drafts,
+update local records, and create tasks.
 
-Codex should not send emails, LinkedIn messages, connection requests, applications, or uploads unless a human explicitly approves and performs or authorizes that external action.
+Assistants should not send emails, LinkedIn messages, connection requests,
+applications, or uploads unless a human explicitly approves and performs or
+authorizes that external action.

@@ -25,7 +25,7 @@ who to contact, what happened, what should happen next, and what needs approval.
 - agencies running high-context client outreach
 - operators who want agents to help draft, organize, and update outreach state
 
-## One-Command Demo
+## One-Command Local Setup
 
 Requirements: Docker Engine. Docker Compose is preferred; direct Docker fallback
 is built into `./oxrm`.
@@ -33,7 +33,7 @@ is built into `./oxrm`.
 ```bash
 git clone https://github.com/otcan/oxrm.git
 cd oxrm
-./oxrm codex-demo
+./oxrm init personal --template job-search --ports auto
 ```
 
 Open the Web URL printed by `./oxrm urls`, then go to `/start` for the guided
@@ -172,8 +172,8 @@ still supported beside `OXRM_API_URL` and `OXRM_MCP_URL`.
 
 ## Docs
 
-- [Codex demo](docs/codex-demo.md)
 - [Onboarding](docs/onboarding.md)
+- [Assistant-specific Codex demo](docs/codex-demo.md)
 - [Job search](docs/use-cases/job-search.md)
 - [Customer outreach](docs/use-cases/customer-outreach.md)
 - [Self-hosted outreach](docs/self-hosted-outreach.md)
