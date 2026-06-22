@@ -160,7 +160,9 @@ type DetailTab = "overview" | "draft" | "activity";
               <oc-job-detail
                 [record]="selection.item"
                 [workflow]="jobWorkflow(selection.item)"
+                [saving]="saving"
                 (runAction)="runJobAction.emit({ record: selection.item, action: $event })"
+                (createCoverLetterDraft)="createJobCoverLetterDraft.emit($event)"
               />
 
               <details class="advanced-detail">
@@ -229,6 +231,7 @@ export class DetailDrawerComponent {
   @Output() runJobAction = new EventEmitter<{ record: XrmRecord; action: JobWorkflowActionKey }>();
   @Output() openCvLibrary = new EventEmitter<void>();
   @Output() createCoverLetterDraft = new EventEmitter<XrmRecord>();
+  @Output() createJobCoverLetterDraft = new EventEmitter<XrmRecord>();
 
   @ViewChild(LeadDetailComponent) leadDetail?: LeadDetailComponent;
   @ViewChild(TaskDetailComponent) taskDetail?: TaskDetailComponent;

@@ -1211,6 +1211,71 @@ export class AppComponent {
     this.selectNav("Documents");
   }
 
+  async createJobCoverLetterDraft(job: XrmRecord) {
+    const role = this.recordField(job, "title", job.displayName);
+    const company = this.recordField(job, "company", "Company");
+    const fitContext = this.recordField(
+      job,
+      "matchingSkills",
+      this.recordField(job, "requirements", this.recordField(job, "description", "the role requirements"))
+    );
+    const contextSnippet = fitContext.length > 320 ? `${fitContext.slice(0, 317).trim()}…` : fitContext;
+
+    this.saving.set(true);
+    this.saveError.set(null);
+    try {
+      const draft = await this.api.createXrmRecord({
+        objectType: "cover_letter",
+        externalKey: `web:job-cover-letter-draft:${job.id}`,
+        displayName: `Cover Letter - ${company} ${role} Draft`,
+        fields: {
+          title: `Cover Letter - ${company} ${role} Draft`,
+          version: "v1-draft",
+          company,
+          derivedFor: `${role} at ${company}`,
+          summary: `Draft generated from the saved ${role} job posting and its fit context.`,
+          body: `Dear ${company} hiring team,\n\nI am applying for the ${role} position. The role's focus on ${contextSnippet} is closely connected to my experience.\n\n[Add one concise, verified example that demonstrates this fit.]\n\nI would welcome the opportunity to discuss how that experience could contribute to ${company}.\n\nBest,\n[Your name]`,
+          editorInstructions: "Generated from the local job posting. Replace bracketed guidance, verify every claim against the CV and job context, and require human review before external use.",
+          jobId: job.id,
+          jobUrl: this.recordField(job, "url", "")
+        },
+        source: "web",
+        metadata: { templateKey: "job_search", source: "job_description", draftOnly: true, jobId: job.id }
+      });
+
+      const workflow = await this.api.getJobWorkflow(job.id).catch(() => null);
+      const application = workflow?.linkedApplication;
+      if (application) {
+        await this.api.createXrmRelationship({
+          relationshipType: "application_uses_cover_letter",
+          sourceRecordId: application.id,
+          targetRecordId: draft.id,
+          source: "web",
+          metadata: { draftOnly: true, jobId: job.id }
+        });
+        await this.api.updateXrmRecord({
+          objectType: application.objectType?.slug ?? "application",
+          recordId: application.id,
+          displayName: application.displayName,
+          ...(application.externalKey ? { externalKey: application.externalKey } : {}),
+          fields: { ...application.fields, coverLetterVersion: draft.displayName },
+          status: application.status,
+          source: application.source ?? "web",
+          metadata: application.metadata ?? null
+        });
+      }
+
+      await this.refresh();
+      this.selectedDetail.set(null);
+      this.savedDocumentId.set(draft.id);
+      this.selectNav("Documents");
+    } catch (error) {
+      this.saveError.set(error instanceof Error ? error.message : "Could not create cover-letter draft from this job.");
+    } finally {
+      this.saving.set(false);
+    }
+  }
+
   async saveDocumentFromLibrary(request: DocumentSaveRequest) {
     const { input, applicationId } = request;
     this.saving.set(true);
