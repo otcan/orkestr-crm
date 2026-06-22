@@ -1531,7 +1531,7 @@ export function createCrmServices({ db, backupsRequired = false }: ServiceContex
       const findBlueprint = (kind: string) =>
         jobBlueprints.find((record) => xrmField(record, "blueprintKind") === kind || record.externalKey?.includes(kind));
       const normalizedInput = defaultJobSearchSetup();
-      const playbookText = xrmField(playbook, "playbookBody") || xrmField(playbook, "agentInstructions") || buildJobSearchSetupPlaybook(normalizedInput);
+      const playbookText = xrmField(playbook, "playbookBody") || buildJobSearchSetupPlaybook(normalizedInput);
       const agentPrompt = xrmField(playbook, "agentInstructions") || buildJobSearchAgentPrompt(normalizedInput);
       const gaps = jobSearchSetupGaps({ sources: jobSources, timers: jobTimers, blueprints: jobBlueprints, playbook });
 
