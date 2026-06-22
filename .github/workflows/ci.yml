@@ -53,15 +53,16 @@ jobs:
           test -f docs/agent-job-search-loop.md
           test -f docs/live-demos.md
           test "$(wc -l < README.md)" -le 200
-          rg -n "oxrm://setup/job-search" docs/start-here.md docs/onboarding/job-search-setup.md docs/agent-job-search-loop.md docs/mcp.md
-          rg -n "./oxrm cli setup:job-search" README.md docs/start-here.md docs/onboarding.md docs/onboarding/job-search-setup.md
-          ! rg -n "otcan/orkestr-crm|@orkestr-crm|scripts/crm|orkestr-crm|orkestr_crm|ORKESTR_HOST|ORKESTR_ADMIN|backups@orkestr" \
-            --glob '!node_modules/**' \
-            --glob '!apps/web/dist/**' \
-            --glob '!dist/**' \
-            --glob '!.github/workflows/ci.yml' \
-            --glob '!docs/migrations/v0.2-to-v0.3.md' \
-            --glob '!ocrm'
+          git grep -n -F -- "oxrm://setup/job-search" docs/start-here.md docs/onboarding/job-search-setup.md docs/agent-job-search-loop.md docs/mcp.md
+          git grep -n -F -- "./oxrm cli setup:job-search" README.md docs/start-here.md docs/onboarding.md docs/onboarding/job-search-setup.md
+          ! git grep -n -E -- "otcan/orkestr-crm|@orkestr-crm|scripts/crm|orkestr-crm|orkestr_crm|ORKESTR_HOST|ORKESTR_ADMIN|backups@orkestr" -- . \
+            ":(exclude)node_modules/**" \
+            ":(exclude)apps/web/dist/**" \
+            ":(exclude)dist/**" \
+            ":(exclude).env.example" \
+            ":(exclude).github/workflows/ci.yml" \
+            ":(exclude)docs/migrations/v0.2-to-v0.3.md" \
+            ":(exclude)ocrm"
 
       - name: Workspace mode UI guard
         run: bash scripts/check-workspace-mode-ui.sh
