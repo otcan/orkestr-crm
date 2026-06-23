@@ -653,6 +653,25 @@ function hasFieldText(record: { fields?: unknown; [key: string]: unknown } | nul
   return xrmField(record, key).trim().length > 0;
 }
 
+function matchesJobSearchBlueprint(
+  record: { fields?: unknown; externalKey?: string | null; displayName?: string; [key: string]: unknown } | null | undefined,
+  aliases: string[]
+) {
+  const haystack = [
+    xrmField(record, "blueprintKind"),
+    xrmField(record, "title"),
+    xrmField(record, "appliesToObjectType"),
+    xrmField(record, "appliesToViewKey"),
+    xrmField(record, "inputs"),
+    xrmField(record, "outputs"),
+    record?.externalKey ?? "",
+    record?.displayName ?? ""
+  ]
+    .join(" ")
+    .toLowerCase();
+  return aliases.some((alias) => haystack.includes(alias.toLowerCase()));
+}
+
 function buildJobSearchSetupReadiness(input: {
   sources: Array<{ fields?: unknown; externalKey?: string | null; displayName?: string; [key: string]: unknown }>;
   timers: Array<{ fields?: unknown; externalKey?: string | null; displayName?: string; [key: string]: unknown }>;
@@ -663,9 +682,15 @@ function buildJobSearchSetupReadiness(input: {
   const todos: JobSearchSetupTodo[] = [];
   const warnings: JobSearchSetupWarning[] = [];
   const viewKeys = new Set(input.views.map((view) => view.key));
-  const hasBlueprint = (kind: string) =>
-    input.blueprints.some((record) => xrmField(record, "blueprintKind") === kind || record.externalKey?.includes(kind));
-  const hasTimer = (key: string) => input.timers.some((record) => record.externalKey?.includes(key) || record.displayName?.toLowerCase().includes(key));
+  const findBlueprint = (...aliases: string[]) => input.blueprints.find((record) => matchesJobSearchBlueprint(record, aliases));
+  const hasBlueprint = (...aliases: string[]) => Boolean(findBlueprint(...aliases));
+  const hasTimer = (key: string) =>
+    input.timers.some((record) =>
+      [record.externalKey ?? "", record.displayName ?? "", xrmField(record, "title"), xrmField(record, "task"), xrmField(record, "blueprint")]
+        .join(" ")
+        .toLowerCase()
+        .includes(key)
+    );
 
   const todo = (item: Omit<JobSearchSetupTodo, "status">) => todos.push({ ...item, status: "open" });
   const warning = (item: Omit<JobSearchSetupWarning, "severity">) => warnings.push({ ...item, severity: "warning" });
@@ -718,7 +743,7 @@ function buildJobSearchSetupReadiness(input: {
     }
   }
 
-  if (!hasBlueprint("fit-rubric")) {
+  if (!hasBlueprint("fit-rubric", "rate-fit", "rate job fit", "calculate job fit")) {
     todo({
       key: "fit_rubric.missing",
       category: "fit",
@@ -730,7 +755,7 @@ function buildJobSearchSetupReadiness(input: {
       agentInstruction: "Do not score jobs until the rubric exists."
     });
   } else {
-    const rubric = input.blueprints.find((record) => xrmField(record, "blueprintKind") === "fit-rubric" || record.externalKey?.includes("fit-rubric"));
+    const rubric = findBlueprint("fit-rubric", "rate-fit", "rate job fit", "calculate job fit");
     const inputs = xrmField(rubric, "inputs");
     if (inputs.includes("not specified")) {
       warning({
@@ -742,7 +767,7 @@ function buildJobSearchSetupReadiness(input: {
     }
   }
 
-  if (!hasBlueprint("cv-editor")) {
+  if (!hasBlueprint("cv-editor", "create-application-packet", "cv version", "cv_variant", "cv variant")) {
     todo({
       key: "cv.blueprint_missing",
       category: "documents",
@@ -754,7 +779,7 @@ function buildJobSearchSetupReadiness(input: {
       agentInstruction: "Do not draft CV variants until the CV blueprint exists."
     });
   } else {
-    const cv = input.blueprints.find((record) => xrmField(record, "blueprintKind") === "cv-editor" || record.externalKey?.includes("cv-editor"));
+    const cv = findBlueprint("cv-editor", "create-application-packet", "cv version", "cv_variant", "cv variant");
     if (xrmField(cv, "inputs").includes("not set")) {
       warning({
         key: "cv.base_missing",
@@ -765,7 +790,7 @@ function buildJobSearchSetupReadiness(input: {
     }
   }
 
-  if (!hasBlueprint("cover-letter")) {
+  if (!hasBlueprint("cover-letter", "cover letter", "create-application-packet")) {
     todo({
       key: "cover_letter.blueprint_missing",
       category: "documents",
@@ -777,7 +802,7 @@ function buildJobSearchSetupReadiness(input: {
       agentInstruction: "Do not draft cover letters until the cover-letter policy exists."
     });
   } else {
-    const cover = input.blueprints.find((record) => xrmField(record, "blueprintKind") === "cover-letter" || record.externalKey?.includes("cover-letter"));
+    const cover = findBlueprint("cover-letter", "cover letter", "create-application-packet");
     if (!xrmField(cover, "automationLevel").includes("never") && xrmField(cover, "inputs").includes("not set")) {
       warning({
         key: "cover_letter.template_missing",
@@ -788,7 +813,7 @@ function buildJobSearchSetupReadiness(input: {
     }
   }
 
-  if (!hasBlueprint("follow-up")) {
+  if (!hasBlueprint("follow-up", "follow up")) {
     todo({
       key: "follow_up.blueprint_missing",
       category: "followups",
@@ -1824,8 +1849,7 @@ export function createCrmServices({ db, backupsRequired = false }: ServiceContex
         jobPlaybooks.find((record) => record.externalKey === "job-search:playbook:generated") ??
         jobPlaybooks.find((record) => record.externalKey === "job-search:playbook:start") ??
         jobPlaybooks[0];
-      const findBlueprint = (kind: string) =>
-        jobBlueprints.find((record) => xrmField(record, "blueprintKind") === kind || record.externalKey?.includes(kind));
+      const findBlueprint = (...aliases: string[]) => jobBlueprints.find((record) => matchesJobSearchBlueprint(record, aliases));
       const normalizedInput = defaultJobSearchSetup();
       const playbookText = xrmField(playbook, "playbookBody") || buildJobSearchSetupPlaybook(normalizedInput);
       const agentPrompt = xrmField(playbook, "agentInstructions") || buildJobSearchAgentPrompt(normalizedInput);
@@ -1846,10 +1870,10 @@ export function createCrmServices({ db, backupsRequired = false }: ServiceContex
         timers: jobTimers,
         blueprints: jobBlueprints,
         views,
-        cvStrategy: findBlueprint("cv-editor") ?? null,
-        coverLetterStrategy: findBlueprint("cover-letter") ?? null,
-        fitRubric: findBlueprint("fit-rubric") ?? null,
-        followUpStrategy: findBlueprint("follow-up") ?? null,
+        cvStrategy: findBlueprint("cv-editor", "create-application-packet", "cv version", "cv_variant", "cv variant") ?? null,
+        coverLetterStrategy: findBlueprint("cover-letter", "cover letter", "create-application-packet") ?? null,
+        fitRubric: findBlueprint("fit-rubric", "rate-fit", "rate job fit", "calculate job fit") ?? null,
+        followUpStrategy: findBlueprint("follow-up", "follow up") ?? null,
         playbookText,
         agentPrompt,
         gaps,
