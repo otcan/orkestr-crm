@@ -6,6 +6,8 @@ export class RouteSinkComponent {}
 
 export const appRoutes: Routes = [
   { path: "today", component: RouteSinkComponent },
+  { path: "setup", redirectTo: "setup/job-search", pathMatch: "full" },
+  { path: "setup/job-search", component: RouteSinkComponent },
   { path: "applications", component: RouteSinkComponent },
   { path: "jobs", component: RouteSinkComponent },
   { path: "documents", component: RouteSinkComponent },
