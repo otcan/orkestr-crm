@@ -73,6 +73,9 @@ messages. Draft only.
    ./oxrm -i personal cli setup:job-search:next
    ```
 
+   Use only the sources I named. Do not add example/template sources such as
+   "Recruiter inbox" unless I explicitly asked for that source.
+
 8. Show me:
 
    - Web URL

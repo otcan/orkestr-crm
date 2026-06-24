@@ -104,26 +104,7 @@ function parseJsonFlag(flags: Map<string, string | boolean>, key: string) {
 const planInputSchema = z.union([planActionSchema, z.array(planActionSchema)]);
 
 function defaultJobSearchSetupInput() {
-  return {
-    sources: [
-      {
-        title: "Job boards and alerts",
-        channel: "job_board",
-        sourceUrl: "https://example.invalid/jobs",
-        cadence: "daily",
-        importInstructions: "Import or paste job postings with source URL, company, role, location, raw description, and received date.",
-        privacyNotes: "Keep real credentials and private alert URLs outside the repository."
-      },
-      {
-        title: "Recruiter inbox",
-        channel: "email",
-        sourceUrl: "mailto:recruiter-inbox@example.invalid",
-        cadence: "daily",
-        importInstructions: "Extract recruiter, company, position, communication thread, job description, and next follow-up.",
-        privacyNotes: "Use local credentials only. Do not use real inbox data in public demos."
-      }
-    ]
-  };
+  return {};
 }
 
 async function main() {

@@ -106,9 +106,11 @@ import { JobSearchSetupInput, JobSearchSetupSourceInput, JobSearchSetupSummary, 
                     <textarea [(ngModel)]="source.importInstructions" [name]="'source-import-' + index"></textarea>
                   </label>
                   <div class="source-row-actions">
-                    <button type="button" [disabled]="form.sources.length <= 1" (click)="removeSource(index)">Remove</button>
+                    <button type="button" (click)="removeSource(index)">Remove</button>
                   </div>
                 </div>
+              } @empty {
+                <div class="empty">No sources yet. Add only the job boards, career pages, inboxes, CSVs, or manual URLs you actually want this workspace to track.</div>
               }
             </div>
           </section>
@@ -319,7 +321,6 @@ export class JobSearchSetupPageComponent implements OnChanges {
   }
 
   removeSource(index: number) {
-    if (this.form.sources.length <= 1) return;
     this.form.sources = this.form.sources.filter((_, itemIndex) => itemIndex !== index);
   }
 
@@ -418,24 +419,7 @@ export class JobSearchSetupPageComponent implements OnChanges {
 
 function defaultSetupForm(): JobSearchSetupInput {
   return {
-    sources: [
-      {
-        title: "Job boards and alerts",
-        channel: "job_board",
-        sourceUrl: "https://example.invalid/jobs",
-        cadence: "daily",
-        importInstructions: "Import or paste job postings with source URL, company, role, location, raw description, and received date.",
-        privacyNotes: "Keep real credentials and private alert URLs outside the repository."
-      },
-      {
-        title: "Recruiter inbox",
-        channel: "email",
-        sourceUrl: "mailto:recruiter-inbox@example.invalid",
-        cadence: "daily",
-        importInstructions: "Extract recruiter, company, position, communication thread, job description, and next follow-up.",
-        privacyNotes: "Use local credentials only. Do not use real inbox data in public demos."
-      }
-    ],
+    sources: [],
     cvStrategy: {
       mode: "master_plus_variants",
       baseCvPath: "./data/job-search/cv/master.md",

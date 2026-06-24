@@ -20,7 +20,7 @@ done
 
 ./oxrm ready >/dev/null
 
-./oxrm cli setup:job-search >"$tmp_dir/configured.json"
+./oxrm cli setup:job-search --input '{"sources":[]}' >"$tmp_dir/reset-setup.json"
 node -e '
   const fs = require("node:fs");
   const data = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
@@ -28,15 +28,63 @@ node -e '
     console.error(JSON.stringify({ error, ...extra }, null, 2));
     process.exit(1);
   };
-  if (!data.configured) fail("job_search_setup_not_configured", { gaps: data.gaps });
-  if (!Array.isArray(data.sources) || data.sources.length < 1) fail("job_search_setup_missing_sources");
+  if (data.sources?.some((source) => source.displayName === "Recruiter inbox")) fail("job_search_setup_created_template_source");
+  if (!Array.isArray(data.sources) || data.sources.length !== 0) fail("job_search_setup_should_start_without_sources", { sources: data.sources });
+  if (!Array.isArray(data.todos) || !data.todos.some((todo) => todo.key === "sources.missing")) {
+    fail("job_search_setup_missing_source_todo", { todos: data.todos });
+  }
   if (!Array.isArray(data.timers) || data.timers.length < 2) fail("job_search_setup_missing_timers");
   if (!Array.isArray(data.blueprints) || data.blueprints.length < 4) fail("job_search_setup_missing_blueprints");
   if (typeof data.readinessScore !== "number" || data.readinessScore < 1) fail("job_search_setup_missing_readiness");
   if (!Array.isArray(data.todos) || !Array.isArray(data.warnings)) fail("job_search_setup_missing_todos");
   if (!Array.isArray(data.agentDirections) || data.agentDirections.length < 1) fail("job_search_setup_missing_agent_directions");
   if (!String(data.playbookText || "").includes("Job search operating playbook")) fail("job_search_setup_missing_playbook_text");
+' "$tmp_dir/reset-setup.json"
+
+./oxrm cli setup:job-search >"$tmp_dir/empty-setup.json"
+node -e '
+  const fs = require("node:fs");
+  const data = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+  const fail = (error, extra = {}) => {
+    console.error(JSON.stringify({ error, ...extra }, null, 2));
+    process.exit(1);
+  };
+  if (!Array.isArray(data.sources) || data.sources.length !== 0) fail("job_search_setup_without_input_should_not_create_sources", { sources: data.sources });
+' "$tmp_dir/empty-setup.json"
+
+./oxrm cli setup:job-search --input '{
+  "sources": [
+    {
+      "title": "Manual job URLs",
+      "channel": "manual",
+      "cadence": "manual",
+      "importInstructions": "Paste role, company, source URL, raw job description, location, and discovered date."
+    }
+  ]
+}' >"$tmp_dir/configured.json"
+node -e '
+  const fs = require("node:fs");
+  const data = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+  const fail = (error, extra = {}) => {
+    console.error(JSON.stringify({ error, ...extra }, null, 2));
+    process.exit(1);
+  };
+  const sourceNames = (data.sources || []).map((source) => source.displayName);
+  if (!data.configured) fail("job_search_setup_not_configured", { gaps: data.gaps, todos: data.todos });
+  if (sourceNames.includes("Recruiter inbox")) fail("job_search_setup_kept_template_source", { sourceNames });
+  if (sourceNames.length !== 1 || sourceNames[0] !== "Manual job URLs") fail("job_search_setup_explicit_sources_not_authoritative", { sourceNames });
 ' "$tmp_dir/configured.json"
+
+./oxrm cli setup:job-search >"$tmp_dir/preserved.json"
+node -e '
+  const fs = require("node:fs");
+  const data = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+  const sourceNames = (data.sources || []).map((source) => source.displayName);
+  if (sourceNames.length !== 1 || sourceNames[0] !== "Manual job URLs") {
+    console.error(JSON.stringify({ error: "job_search_setup_without_input_should_preserve_sources", sourceNames }, null, 2));
+    process.exit(1);
+  }
+' "$tmp_dir/preserved.json"
 
 ./oxrm cli setup:job-search:get >"$tmp_dir/read.json"
 node -e '

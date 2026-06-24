@@ -52,13 +52,13 @@ Run:
 ./oxrm -i personal cli setup:job-search:next
 ./oxrm -i personal cli mcp:read oxrm://setup/job-search
 
-Ask me the missing essentials: target roles, locations, remote rules, salary or
-visa constraints, must-have skills, exclusions, base CV, cover-letter template,
-job sources, and daily review time.
+Ask me the missing essentials: target roles, constraints, skills, exclusions,
+base CV, cover-letter template, job sources, and daily review time.
 
-Configure oXRM from my answers. Show the Web URL, readiness score, todos,
-warnings, next action, and first three views. Stop after setup; do not apply to
-jobs or contact anyone.
+Configure oXRM from my answers. Use only the job sources I named; do not add
+example/template sources such as "Recruiter inbox" unless I explicitly ask.
+Show the Web URL, readiness score, todos, warnings, next action, and first
+three views. Stop after setup; do not apply or contact anyone.
 ```
 
 The full prompt lives in

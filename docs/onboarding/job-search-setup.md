@@ -13,6 +13,8 @@ docs/prompts/job-search-codex-onboarding.md
 
 That prompt tells Codex to clone oXRM, run `./oxrm doctor`, start Docker, ask
 the essential job-search setup questions, and configure this setup contract.
+The setup should use only the sources the user names; example sources are for
+public demos, not personal onboarding.
 
 ## Manual start
 
@@ -24,6 +26,11 @@ the essential job-search setup questions, and configure this setup contract.
 ./oxrm cli setup:job-search:next
 ./oxrm urls
 ```
+
+Running `setup:job-search` without `--input` creates or refreshes the setup
+playbook, blueprints, timers, and todos. It does not create fake starter
+sources or overwrite existing setup sources. Add or replace sources with
+explicit input or from the setup page.
 
 Open the web app and go to:
 

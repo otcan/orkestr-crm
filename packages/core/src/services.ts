@@ -545,26 +545,7 @@ function linesList(values: string[]) {
 }
 
 function defaultJobSearchSetup(): JobSearchSetup {
-  return jobSearchSetupSchema.parse({
-    sources: [
-      {
-        title: "Job boards and alerts",
-        channel: "job_board",
-        sourceUrl: "https://example.invalid/jobs",
-        cadence: "daily",
-        importInstructions: "Import or paste job postings with the source URL, raw job description, company, role, and location.",
-        privacyNotes: "Keep real credentials and private alert links outside the repository."
-      },
-      {
-        title: "Recruiter inbox",
-        channel: "email",
-        sourceUrl: "mailto:recruiter-inbox@example.invalid",
-        cadence: "daily",
-        importInstructions: "Extract recruiter, company, position, job description, communication thread, and next follow-up.",
-        privacyNotes: "Use local credentials only. Do not include real inbox data in public demos."
-      }
-    ]
-  });
+  return jobSearchSetupSchema.parse({});
 }
 
 function buildJobSearchSetupPlaybook(input: JobSearchSetup) {
@@ -1838,17 +1819,17 @@ export function createCrmServices({ db, backupsRequired = false }: ServiceContex
         this.searchXrmRecords({ objectType: "action_blueprint", limit: 200 }),
         this.listViews({ templateKey: "job_search", limit: 200 })
       ]);
-      const jobSearchOnly = (record: { externalKey?: string | null; metadata?: unknown }) =>
-        record.externalKey?.startsWith("job-search:") || jsonObject(record.metadata)["templateKey"] === "job_search";
+      const jobSearchSetupOnly = (record: { externalKey?: string | null; metadata?: unknown; source?: string | null }) =>
+        record.externalKey?.startsWith("job-search:setup:") ||
+        record.externalKey === "job-search:playbook:generated" ||
+        record.source === "job-search-setup" ||
+        jsonObject(record.metadata)["source"] === "job-search-setup";
       const setupFirst = (record: { externalKey?: string | null }) => (record.externalKey?.startsWith("job-search:setup:") ? 0 : 1);
-      const jobPlaybooks = playbooks.filter(jobSearchOnly).sort((left, right) => setupFirst(left) - setupFirst(right));
-      const jobSources = sources.filter(jobSearchOnly).sort((left, right) => setupFirst(left) - setupFirst(right));
-      const jobTimers = timers.filter(jobSearchOnly).sort((left, right) => setupFirst(left) - setupFirst(right));
-      const jobBlueprints = blueprints.filter(jobSearchOnly).sort((left, right) => setupFirst(left) - setupFirst(right));
-      const playbook =
-        jobPlaybooks.find((record) => record.externalKey === "job-search:playbook:generated") ??
-        jobPlaybooks.find((record) => record.externalKey === "job-search:playbook:start") ??
-        jobPlaybooks[0];
+      const jobPlaybooks = playbooks.filter(jobSearchSetupOnly).sort((left, right) => setupFirst(left) - setupFirst(right));
+      const jobSources = sources.filter(jobSearchSetupOnly).sort((left, right) => setupFirst(left) - setupFirst(right));
+      const jobTimers = timers.filter(jobSearchSetupOnly).sort((left, right) => setupFirst(left) - setupFirst(right));
+      const jobBlueprints = blueprints.filter(jobSearchSetupOnly).sort((left, right) => setupFirst(left) - setupFirst(right));
+      const playbook = jobPlaybooks.find((record) => record.externalKey === "job-search:playbook:generated") ?? jobPlaybooks[0];
       const findBlueprint = (...aliases: string[]) => jobBlueprints.find((record) => matchesJobSearchBlueprint(record, aliases));
       const normalizedInput = defaultJobSearchSetup();
       const playbookText = xrmField(playbook, "playbookBody") || buildJobSearchSetupPlaybook(normalizedInput);
@@ -1966,8 +1947,10 @@ export function createCrmServices({ db, backupsRequired = false }: ServiceContex
     },
 
     async configureJobSearchSetup(input: unknown = {}) {
+      const inputObject = input && typeof input === "object" && !Array.isArray(input) ? (input as Record<string, unknown>) : {};
+      const sourcesProvided = Object.prototype.hasOwnProperty.call(inputObject, "sources");
       const parsedInput = jobSearchSetupSchema.parse(input);
-      const parsed = parsedInput.sources.length > 0 ? parsedInput : defaultJobSearchSetup();
+      const parsed = parsedInput;
       const playbookBody = buildJobSearchSetupPlaybook(parsed);
       const agentPrompt = buildJobSearchAgentPrompt(parsed);
       const metadata = {
@@ -1975,28 +1958,45 @@ export function createCrmServices({ db, backupsRequired = false }: ServiceContex
         source: "job-search-setup",
         generatedAt: new Date().toISOString()
       };
+      const activeSourceKeys = new Set(parsed.sources.map((source) => `job-search:setup:source:${slugPart(source.title)}`));
+      const existingSetupSources = await this.searchXrmRecords({ objectType: "source_config", limit: 500 });
 
-      await Promise.all(
-        parsed.sources.map((source) =>
-          this.upsertXrmRecord({
-            objectType: "source_config",
-            externalKey: `job-search:setup:source:${slugPart(source.title)}`,
-            displayName: source.title,
-            fields: {
-              title: source.title,
-              channel: source.channel,
-              sourceUrl: source.sourceUrl,
-              cadence: source.cadence,
-              status: "configured",
-              importInstructions: source.importInstructions,
-              privacyNotes: source.privacyNotes
-            },
-            status: "active",
-            source: "job-search-setup",
-            metadata
-          })
-        )
-      );
+      if (sourcesProvided) {
+        await Promise.all(
+          existingSetupSources
+            .filter((record) => record.externalKey?.startsWith("job-search:setup:source:") && !activeSourceKeys.has(record.externalKey))
+            .map((record) =>
+              db
+                .update(xrmRecords)
+                .set({ status: "archived", deletedAt: new Date(), updatedAt: new Date() })
+                .where(eq(xrmRecords.id, record.id))
+            )
+        );
+      }
+
+      if (sourcesProvided) {
+        await Promise.all(
+          parsed.sources.map((source) =>
+            this.upsertXrmRecord({
+              objectType: "source_config",
+              externalKey: `job-search:setup:source:${slugPart(source.title)}`,
+              displayName: source.title,
+              fields: {
+                title: source.title,
+                channel: source.channel,
+                sourceUrl: source.sourceUrl,
+                cadence: source.cadence,
+                status: "configured",
+                importInstructions: source.importInstructions,
+                privacyNotes: source.privacyNotes
+              },
+              status: "active",
+              source: "job-search-setup",
+              metadata
+            })
+          )
+        );
+      }
 
       const blueprintRecords = [
         {
