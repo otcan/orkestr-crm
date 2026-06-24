@@ -1,6 +1,15 @@
 # oXRM onboarding
 
-Use `./oxrm init` from a fresh clone.
+For job search, the recommended path is Codex-first onboarding:
+
+1. Install Codex for desktop.
+2. Create a new Project.
+3. Paste `docs/prompts/job-search-codex-onboarding.md`.
+
+Codex should clone oXRM, run local checks, start Docker, ask the essential
+job-search setup questions, and configure the setup contract.
+
+Manual setup still works from a fresh clone:
 
 ```bash
 git clone https://github.com/otcan/oxrm.git

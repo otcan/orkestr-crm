@@ -29,13 +29,15 @@ This is the operating manual for a local assistant working with oXRM.
 ## Initial setup prompt
 
 ```text
+If this is a fresh machine, use docs/prompts/job-search-codex-onboarding.md.
+
 Use Docker and local synthetic/demo-safe data unless I explicitly provide real
 records.
 
 Run or inspect the job-search setup:
 
-1. Run `./oxrm cli setup:job-search:get`.
-2. Run `./oxrm cli setup:job-search:next`.
+1. Run `./oxrm cli setup:job-search:next`.
+2. If setup is missing, run `./oxrm cli setup:job-search`.
 3. Read `oxrm://setup/job-search`.
 4. Read `oxrm://playbook/job-search`.
 5. Tell me what sources, CV policy, cover-letter policy, fit rubric, timers,

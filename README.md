@@ -45,23 +45,17 @@ For a blank local workspace instead of demo records:
 ./oxrm init --template blank
 ```
 
-## Try With An Assistant
+## Start Job Search With Codex
 
-After cloning the repo, run oXRM locally and connect the assistant you use:
-Codex, Claude, Gemini, Cursor, VS Code, or another MCP-capable tool.
+Install Codex for desktop, create a new Project, and paste:
 
-```bash
-./oxrm init personal --template job-search --ports auto
-./oxrm -i personal urls
+```text
+docs/prompts/job-search-codex-onboarding.md
 ```
 
-Register the printed MCP endpoint in your assistant, then ask it:
-
-> Inspect my local oXRM workspace, read today's queue, inspect job postings and
-> applications, summarize the linked context, and draft the next action without
-> sending anything or modifying records unless I approve it.
-
-The demo uses synthetic data only.
+Codex will clone oXRM, run local checks, start Docker, ask the essential
+job-search setup questions, and configure sources, CV policy, cover-letter
+policy, fit scoring, timers, and draft-only agent rules.
 
 ## Job Search Workflow
 

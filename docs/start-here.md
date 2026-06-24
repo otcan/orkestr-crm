@@ -1,6 +1,6 @@
 # Start here
 
-This page is the shortest path from clone to a usable local oXRM workspace.
+This page is the shortest path to a usable local oXRM job-search workspace.
 
 ## What oXRM is
 
@@ -19,7 +19,18 @@ It stores local records, tasks, notes, drafts, files, relationships, events,
 saved views, and approval state. Agents can read and update that local state,
 but humans stay responsible for external actions.
 
-## Run locally
+## Recommended: start with Codex
+
+1. Install Codex for desktop.
+2. Create a new Project.
+3. Paste the prompt from `docs/prompts/job-search-codex-onboarding.md`.
+
+Codex should clone oXRM, run `./oxrm doctor`, start the local Docker stack,
+ask the essential job-search setup questions, and configure the workspace.
+
+See [Start job search with Codex](start-with-codex.md).
+
+## Run locally yourself
 
 Requirements: Docker Engine.
 
@@ -105,6 +116,7 @@ OXRM_INSTANCE=personal bash scripts/smoke-job-search-setup.sh
 
 ## Next docs
 
+- [Start job search with Codex](start-with-codex.md)
 - [Job search setup](onboarding/job-search-setup.md)
 - [Agent job search loop](agent-job-search-loop.md)
 - [XRM model](xrm-model.md)

@@ -3,7 +3,18 @@
 Use this when you want oXRM to become a local job application system that a
 human and an assistant can operate together.
 
-## Start
+## Recommended start
+
+Install Codex for desktop, create a new Project, and paste:
+
+```text
+docs/prompts/job-search-codex-onboarding.md
+```
+
+That prompt tells Codex to clone oXRM, run `./oxrm doctor`, start Docker, ask
+the essential job-search setup questions, and configure this setup contract.
+
+## Manual start
 
 ```bash
 ./oxrm start

@@ -7,6 +7,17 @@ cd "$ROOT_DIR"
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 
+test -f docs/start-with-codex.md
+test -f docs/prompts/job-search-codex-onboarding.md
+grep -F "git clone https://github.com/otcan/oxrm.git" docs/prompts/job-search-codex-onboarding.md >/dev/null
+grep -F "./oxrm doctor" docs/prompts/job-search-codex-onboarding.md >/dev/null
+grep -F "./oxrm init personal --template job-search --ports auto" docs/prompts/job-search-codex-onboarding.md >/dev/null
+grep -F "./oxrm -i personal cli setup:job-search:next" docs/prompts/job-search-codex-onboarding.md >/dev/null
+grep -F "Do not send" docs/prompts/job-search-codex-onboarding.md >/dev/null
+for doc in docs/start-with-codex.md README.md docs/start-here.md docs/onboarding/job-search-setup.md; do
+  grep -F "Install Codex for desktop" "$doc" >/dev/null
+done
+
 ./oxrm ready >/dev/null
 
 ./oxrm cli setup:job-search >"$tmp_dir/configured.json"
