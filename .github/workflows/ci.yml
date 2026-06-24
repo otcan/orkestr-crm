@@ -198,9 +198,10 @@ jobs:
           port="${OXRM_DEMO_SSH_PORT:-22}"
           remote="${OXRM_DEMO_SSH_USER}@${OXRM_DEMO_SSH_HOST}"
           release_dir="${OXRM_DEMO_DEPLOY_ROOT}/releases/${GITHUB_SHA}"
-          ssh -i ~/.ssh/oxrm-demo -p "$port" "$remote" "rm -rf '$release_dir' && mkdir -p '$release_dir'"
+          ssh_opts=(-i ~/.ssh/oxrm-demo -p "$port" -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -o TCPKeepAlive=yes)
+          ssh "${ssh_opts[@]}" "$remote" "rm -rf '$release_dir' && mkdir -p '$release_dir'"
           tar --exclude=.git --exclude=node_modules --exclude=.pnpm-store -czf - . \
-            | ssh -i ~/.ssh/oxrm-demo -p "$port" "$remote" "tar -xzf - -C '$release_dir' && ln -sfn '$release_dir' '${OXRM_DEMO_DEPLOY_ROOT}/current'"
+            | ssh "${ssh_opts[@]}" "$remote" "tar -xzf - -C '$release_dir' && ln -sfn '$release_dir' '${OXRM_DEMO_DEPLOY_ROOT}/current'"
 
       - name: Deploy live demos
         env:
@@ -215,7 +216,8 @@ jobs:
           port="${OXRM_DEMO_SSH_PORT:-22}"
           remote="${OXRM_DEMO_SSH_USER}@${OXRM_DEMO_SSH_HOST}"
           deployed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          ssh -i ~/.ssh/oxrm-demo -p "$port" "$remote" "bash -se" <<REMOTE
+          ssh_opts=(-i ~/.ssh/oxrm-demo -p "$port" -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -o TCPKeepAlive=yes)
+          ssh "${ssh_opts[@]}" "$remote" "bash -se" <<REMOTE
           set -euo pipefail
           cd '${OXRM_DEMO_DEPLOY_ROOT}/current'
           corepack enable
@@ -276,7 +278,8 @@ jobs:
             caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
           fi
           if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet caddy; then
-            systemctl reload caddy
+            echo "Reloading Caddy..."
+            timeout 30s systemctl reload caddy
           fi
 
           expected_main="\$(sed -n 's/.*src=\"\\(main-[^\"]*\\.js\\)\".*/\\1/p' "\${web_root}/index.html" | head -n 1)"
@@ -285,9 +288,16 @@ jobs:
             exit 1
           fi
 
+          public_curl() {
+            url="\$1"
+            curl --connect-timeout 5 --max-time 20 --retry 2 --retry-delay 2 --retry-connrefused \
+              -fsS -H 'Cache-Control: no-cache' "\${url}"
+          }
+
           for host in job-search-demo.oxrm.orkestr.de linkedin-outreach-demo.oxrm.orkestr.de; do
             for attempt in \$(seq 1 10); do
-              if curl -fsS -H 'Cache-Control: no-cache' "https://\${host}/today?deploy=\${OXRM_DEPLOY_GIT_SHA}" | grep -F "\${expected_main}" >/dev/null; then
+              echo "Checking public web bundle for \${host}, attempt \${attempt}..."
+              if public_curl "https://\${host}/today?deploy=\${OXRM_DEPLOY_GIT_SHA}" | grep -F "\${expected_main}" >/dev/null; then
                 break
               fi
               if [ "\${attempt}" = "10" ]; then
@@ -328,7 +338,7 @@ jobs:
             expected_mode="\$2"
             page_path="\$3"
 
-            bootstrap="\$(curl -fsS -H 'Cache-Control: no-cache' "https://\${host}/api/workspace/bootstrap?deploy=\${OXRM_DEPLOY_GIT_SHA}")"
+            bootstrap="\$(public_curl "https://\${host}/api/workspace/bootstrap?deploy=\${OXRM_DEPLOY_GIT_SHA}")"
             node -e '
               const data = JSON.parse(process.argv[1]);
               const expected = process.argv[2];
@@ -343,17 +353,17 @@ jobs:
             ' "\${bootstrap}" "\${expected_mode}"
 
             for route in "\${page_path}" "/today"; do
-              curl -fsS -H 'Cache-Control: no-cache' "https://\${host}\${route}?deploy=\${OXRM_DEPLOY_GIT_SHA}" \
+              public_curl "https://\${host}\${route}?deploy=\${OXRM_DEPLOY_GIT_SHA}" \
                 | grep -F "\${expected_main}" >/dev/null
             done
 
             if [ "\${expected_mode}" = "job_search" ]; then
-              curl -fsS -H 'Cache-Control: no-cache' "https://\${host}/setup/job-search?deploy=\${OXRM_DEPLOY_GIT_SHA}" \
+              public_curl "https://\${host}/setup/job-search?deploy=\${OXRM_DEPLOY_GIT_SHA}" \
                 | grep -F "\${expected_main}" >/dev/null
 
-              apps="\$(curl -fsS -H 'Cache-Control: no-cache' "https://\${host}/api/views/job_search.applications/run?limit=100&deploy=\${OXRM_DEPLOY_GIT_SHA}")"
-              leads="\$(curl -fsS -H 'Cache-Control: no-cache' "https://\${host}/api/leads?limit=100&deploy=\${OXRM_DEPLOY_GIT_SHA}")"
-              setup="\$(curl -fsS -H 'Cache-Control: no-cache' "https://\${host}/api/setup/job-search?deploy=\${OXRM_DEPLOY_GIT_SHA}")"
+              apps="\$(public_curl "https://\${host}/api/views/job_search.applications/run?limit=100&deploy=\${OXRM_DEPLOY_GIT_SHA}")"
+              leads="\$(public_curl "https://\${host}/api/leads?limit=100&deploy=\${OXRM_DEPLOY_GIT_SHA}")"
+              setup="\$(public_curl "https://\${host}/api/setup/job-search?deploy=\${OXRM_DEPLOY_GIT_SHA}")"
               node -e '
                 const apps = JSON.parse(process.argv[1]);
                 const leads = JSON.parse(process.argv[2]);
@@ -370,8 +380,8 @@ jobs:
                 }
               ' "\${apps}" "\${leads}" "\${setup}"
             else
-              apps="\$(curl -fsS -H 'Cache-Control: no-cache' "https://\${host}/api/views/job_search.applications/run?limit=100&deploy=\${OXRM_DEPLOY_GIT_SHA}")"
-              leads="\$(curl -fsS -H 'Cache-Control: no-cache' "https://\${host}/api/leads?limit=100&deploy=\${OXRM_DEPLOY_GIT_SHA}")"
+              apps="\$(public_curl "https://\${host}/api/views/job_search.applications/run?limit=100&deploy=\${OXRM_DEPLOY_GIT_SHA}")"
+              leads="\$(public_curl "https://\${host}/api/leads?limit=100&deploy=\${OXRM_DEPLOY_GIT_SHA}")"
               node -e '
                 const apps = JSON.parse(process.argv[1]);
                 const leads = JSON.parse(process.argv[2]);
