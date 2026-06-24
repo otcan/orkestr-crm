@@ -25,37 +25,44 @@ who to contact, what happened, what should happen next, and what needs approval.
 - agencies running high-context client outreach
 - operators who want agents to help draft, organize, and update outreach state
 
-## One-Command Local Setup
+## Start With Codex
 
-Requirements: Docker Engine. Docker Compose is preferred; direct Docker fallback
-is built into `./oxrm`.
+The recommended first-run path is Codex-managed onboarding. Let Codex run the
+repo setup and ask the job-search questions.
 
-```bash
-git clone https://github.com/otcan/oxrm.git
-cd oxrm
-./oxrm init personal --template job-search --ports auto
-```
-
-Open the Web URL printed by `./oxrm -i personal urls`, then go to `/start` for
-the guided setup checklist.
-
-For a blank local workspace instead of demo records:
-
-```bash
-./oxrm init --template blank
-```
-
-## Start Job Search With Codex
-
-Install Codex for desktop, create a new Project, and paste:
+1. Install Codex for desktop. Download the desktop app first.
+2. Create a new Project.
+3. Copy and paste this prompt:
 
 ```text
-docs/prompts/job-search-codex-onboarding.md
+Clone https://github.com/otcan/oxrm and set it up locally for job search.
+
+Use Docker. Do not use real external credentials. Draft only: do not send
+emails, LinkedIn messages, CVs, cover letters, applications, uploads, or
+recruiter messages.
+
+After cloning, read docs/start-with-codex.md,
+docs/onboarding/job-search-setup.md, and docs/agent-job-search-loop.md.
+
+Run:
+./oxrm doctor
+./oxrm init personal --template job-search --ports auto
+./oxrm -i personal ready
+./oxrm -i personal urls
+./oxrm -i personal cli setup:job-search:next
+./oxrm -i personal cli mcp:read oxrm://setup/job-search
+
+Ask me the missing essentials: target roles, locations, remote rules, salary or
+visa constraints, must-have skills, exclusions, base CV, cover-letter template,
+job sources, and daily review time.
+
+Configure oXRM from my answers. Show the Web URL, readiness score, todos,
+warnings, next action, and first three views. Stop after setup; do not apply to
+jobs or contact anyone.
 ```
 
-Codex will clone oXRM, run local checks, start Docker, ask the essential
-job-search setup questions, and configure sources, CV policy, cover-letter
-policy, fit scoring, timers, and draft-only agent rules.
+The full prompt lives in
+[docs/prompts/job-search-codex-onboarding.md](docs/prompts/job-search-codex-onboarding.md).
 
 ## Job Search Workflow
 
