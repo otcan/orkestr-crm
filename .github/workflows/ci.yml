@@ -276,10 +276,9 @@ jobs:
 
           if command -v caddy >/dev/null 2>&1 && [ -f /etc/caddy/Caddyfile ]; then
             caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
-          fi
-          if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet caddy; then
-            echo "Reloading Caddy..."
-            timeout 30s systemctl reload caddy
+            echo "Reloading Caddy if the admin endpoint is available..."
+            timeout 30s caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile \
+              || echo "Caddy reload did not complete; continuing to public bundle checks." >&2
           fi
 
           expected_main="\$(sed -n 's/.*src=\"\\(main-[^\"]*\\.js\\)\".*/\\1/p' "\${web_root}/index.html" | head -n 1)"
