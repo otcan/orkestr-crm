@@ -298,18 +298,27 @@ jobs:
             return "\${curl_status}"
           }
 
-          for host in job-search-demo.oxrm.orkestr.de linkedin-outreach-demo.oxrm.orkestr.de; do
+          wait_for_public_bundle() {
+            url="\$1"
+            label="\$2"
             for attempt in \$(seq 1 10); do
-              echo "Checking public web bundle for \${host}, attempt \${attempt}..."
-              if public_curl "https://\${host}/today?deploy=\${OXRM_DEPLOY_GIT_SHA}" | grep -F "\${expected_main}" >/dev/null; then
-                break
+              echo "Checking public web bundle for \${label}, attempt \${attempt}..."
+              bundle_response=""
+              if bundle_response="\$(public_curl "\${url}")"; then
+                if grep -F "\${expected_main}" <<<"\${bundle_response}" >/dev/null; then
+                  return 0
+                fi
               fi
               if [ "\${attempt}" = "10" ]; then
-                echo "Public web bundle for \${host} did not match \${expected_main}" >&2
-                exit 1
+                echo "Public web bundle for \${label} did not match \${expected_main}" >&2
+                return 1
               fi
               sleep 2
             done
+          }
+
+          for host in job-search-demo.oxrm.orkestr.de linkedin-outreach-demo.oxrm.orkestr.de; do
+            wait_for_public_bundle "https://\${host}/today?deploy=\${OXRM_DEPLOY_GIT_SHA}" "\${host}"
           done
 
           assert_bundle_text() {
@@ -357,13 +366,11 @@ jobs:
             ' "\${bootstrap}" "\${expected_mode}"
 
             for route in "\${page_path}" "/today"; do
-              public_curl "https://\${host}\${route}?deploy=\${OXRM_DEPLOY_GIT_SHA}" \
-                | grep -F "\${expected_main}" >/dev/null
+              wait_for_public_bundle "https://\${host}\${route}?deploy=\${OXRM_DEPLOY_GIT_SHA}" "\${host}\${route}"
             done
 
             if [ "\${expected_mode}" = "job_search" ]; then
-              public_curl "https://\${host}/setup/job-search?deploy=\${OXRM_DEPLOY_GIT_SHA}" \
-                | grep -F "\${expected_main}" >/dev/null
+              wait_for_public_bundle "https://\${host}/setup/job-search?deploy=\${OXRM_DEPLOY_GIT_SHA}" "\${host}/setup/job-search"
 
               apps="\$(public_curl "https://\${host}/api/views/job_search.applications/run?limit=100&deploy=\${OXRM_DEPLOY_GIT_SHA}")"
               leads="\$(public_curl "https://\${host}/api/leads?limit=100&deploy=\${OXRM_DEPLOY_GIT_SHA}")"
