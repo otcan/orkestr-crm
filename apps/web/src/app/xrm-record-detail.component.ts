@@ -504,8 +504,22 @@ export class XrmRecordDetailComponent implements OnChanges {
       ? ["role", "company", "stage", "fitRate", "responsiblePerson", "cvVersion", "coverLetterVersion", "lastTouchAt"]
       : slug === "job"
         ? ["title", "company", "platform", "fitRate", "applicationStage", "nextActionAt"]
+        : slug === "raw_job_signal"
+          ? ["title", "sourceTitle", "company", "role", "status", "dedupeStatus", "receivedAt", "postingUrl"]
         : slug === "job_fit"
-          ? ["title", "fitRate", "recommendedAction", "evaluatedAt", "fitSummary", "riskNotes"]
+          ? ["title", "currentFitRate", "pushableFitRate", "confidence", "recommendedAction", "reasonNotHigher", "evaluatedAt"]
+          : slug === "application_packet"
+            ? ["title", "company", "role", "channel", "approvalStatus", "status", "packetSummary", "createdAt"]
+            : slug === "job_search_profile"
+              ? ["title", "status", "targetRoles", "targetLocations", "fitThreshold", "pushableThreshold", "missingWarnings"]
+              : slug === "source_config"
+                ? ["title", "channel", "sourceUrl", "cadence", "importInstructions", "privacyNotes"]
+                : slug === "automation_timer"
+                  ? ["title", "timerKind", "schedule", "timezone", "status", "lastRunAt", "runner"]
+                  : slug === "setup_todo"
+                    ? ["title", "category", "severity", "owner", "status", "suggestedAction"]
+                    : slug === "operator_playbook"
+                      ? ["title", "templateKey", "status", "agentInstructions", "humanInstructions"]
           : slug === "job_alert"
             ? ["title", "source", "receivedAt", "status"]
             : slug === "cv_version" || slug === "cover_letter"
@@ -515,9 +529,22 @@ export class XrmRecordDetailComponent implements OnChanges {
                 : slug === "action_blueprint"
                   ? ["title", "appliesToViewKey", "appliesToObjectType", "automationLevel", "approvalRequired", "riskLevel"]
                   : slug === "action_suggestion"
-                    ? ["title", "targetRecord", "status", "priority", "confidence", "approvalRequired", "dueAt"]
+                    ? [
+                        "title",
+                        "targetRecord",
+                        "actionKind",
+                        "safetyClass",
+                        "status",
+                        "approvalDecision",
+                        "externalEffectDeclared",
+                        "humanConfirmedExternalEffect",
+                        "receiptComplete",
+                        "priority",
+                        "confidence",
+                        "dueAt"
+                      ]
                     : slug === "action_run"
-                      ? ["title", "blueprint", "mode", "status", "startedAt", "finishedAt"]
+                      ? ["title", "blueprint", "mode", "status", "externalEffectDeclared", "humanConfirmedExternalEffect", "startedAt", "finishedAt"]
                       : slug === "approval_request"
                         ? ["title", "status", "owner", "requestedAt", "requestedAction", "decision"]
                         : summaryFields.length > 0

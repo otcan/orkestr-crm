@@ -16,6 +16,7 @@ import { JobApplicationsPageComponent } from "./job-applications-page.component"
 import { JobContactRow, JobContactsPageComponent } from "./job-contacts-page.component";
 import { JobJobsPageComponent } from "./job-jobs-page.component";
 import { JobSearchSetupPageComponent } from "./job-search-setup-page.component";
+import { JobXrmListPageComponent } from "./job-xrm-list-page.component";
 import { OutreachCompaniesPageComponent } from "./outreach-companies-page.component";
 import { OutreachPeoplePageComponent } from "./outreach-people-page.component";
 import { OutreachPipelinePageComponent } from "./outreach-pipeline-page.component";
@@ -55,10 +56,16 @@ import {
 
 const JOB_NAV: NavDefinition[] = [
   { label: "Today", path: "/today" },
-  { label: "Setup", path: "/setup/job-search" },
-  { label: "Applications", path: "/applications" },
+  { label: "Source Inbox", path: "/source-inbox" },
   { label: "Jobs", path: "/jobs" },
-  { label: "Contacts", path: "/contacts" }
+  { label: "Fit Review", path: "/fit-review" },
+  { label: "Applications", path: "/applications" },
+  { label: "Packets", path: "/packets" },
+  { label: "CV Bank", path: "/cv-bank" },
+  { label: "Ledger", path: "/ledger" },
+  { label: "Actions", path: "/actions" },
+  { label: "Contacts", path: "/contacts" },
+  { label: "Setup", path: "/setup/job-search" }
 ];
 
 const OUTREACH_NAV: NavDefinition[] = [
@@ -86,6 +93,7 @@ const OUTREACH_NAV: NavDefinition[] = [
     JobContactsPageComponent,
     JobJobsPageComponent,
     JobSearchSetupPageComponent,
+    JobXrmListPageComponent,
     OutreachCompaniesPageComponent,
     OutreachPeoplePageComponent,
     OutreachPipelinePageComponent,
@@ -111,6 +119,12 @@ export class AppComponent {
   readonly jobApplications = signal<ViewRunResult | null>(null);
   readonly jobJobs = signal<ViewRunResult | null>(null);
   readonly jobInterviews = signal<ViewRunResult | null>(null);
+  readonly jobSourceInbox = signal<ViewRunResult | null>(null);
+  readonly jobFits = signal<ViewRunResult | null>(null);
+  readonly jobPackets = signal<ViewRunResult | null>(null);
+  readonly jobCvBank = signal<ViewRunResult | null>(null);
+  readonly jobLedger = signal<ViewRunResult | null>(null);
+  readonly jobActions = signal<ViewRunResult | null>(null);
   readonly jobSearchSetup = signal<JobSearchSetupSummary | null>(null);
   readonly jobContacts = signal<XrmRecord[]>([]);
   readonly cvRecords = signal<XrmRecord[]>([]);
@@ -156,6 +170,12 @@ export class AppComponent {
   readonly jobSort = signal("newest");
   readonly jobPage = signal(1);
   readonly jobPageSize = signal(25);
+  readonly sourceInboxSearch = signal("");
+  readonly fitReviewSearch = signal("");
+  readonly packetSearch = signal("");
+  readonly cvBankSearch = signal("");
+  readonly ledgerSearch = signal("");
+  readonly actionSearch = signal("");
   readonly contactSearch = signal("");
   readonly pipelineSearch = signal("");
   readonly pipelineLastContactFilter = signal("any");
@@ -207,9 +227,15 @@ export class AppComponent {
         routes: {
           Today: "/today",
           Setup: "/setup/job-search",
+          "Source Inbox": "/source-inbox",
           Applications: "/applications",
           Jobs: "/jobs",
-        Contacts: "/contacts",
+          "Fit Review": "/fit-review",
+          Packets: "/packets",
+          "CV Bank": "/cv-bank",
+          Ledger: "/ledger",
+          Actions: "/actions",
+          Contacts: "/contacts",
         Settings: "/settings",
         Advanced: "/settings/advanced"
       }
@@ -237,6 +263,12 @@ export class AppComponent {
   readonly jobApplicationRows = computed(() => this.jobApplications()?.rows ?? []);
   readonly jobRows = computed(() => this.jobJobs()?.rows ?? []);
   readonly jobInterviewRows = computed(() => this.jobInterviews()?.rows ?? []);
+  readonly jobSourceInboxRows = computed(() => this.jobSourceInbox()?.rows ?? []);
+  readonly jobFitRows = computed(() => this.jobFits()?.rows ?? []);
+  readonly jobPacketRows = computed(() => this.jobPackets()?.rows ?? []);
+  readonly jobCvBankRows = computed(() => this.jobCvBank()?.rows ?? []);
+  readonly jobLedgerRows = computed(() => this.jobLedger()?.rows ?? []);
+  readonly jobActionRows = computed(() => this.jobActions()?.rows ?? []);
 
   readonly filteredApplicationRows = computed(() => {
     const query = this.applicationSearch().trim().toLowerCase();
@@ -964,10 +996,22 @@ export class AppComponent {
           : "What needs attention now, what is coming up, and where each application stands.";
       case "Setup":
         return "Sources, CV policy, fit scoring, timers, and agent playbook for the local job search.";
+      case "Source Inbox":
+        return "Raw postings, job alerts, recruiter emails, and pasted URLs before dedupe and promotion.";
       case "Applications":
         return "Track each application by stage, contact, fit, and next action.";
       case "Jobs":
         return "Review saved roles and decide which opportunities are worth applying to.";
+      case "Fit Review":
+        return "Evaluate current fit, pushable fit, evidence, gaps, and the next suggested local action.";
+      case "Packets":
+        return "Draft-only application packets tying together job, fit, CV, cover letter, channel, and approval state.";
+      case "CV Bank":
+        return "Base CVs and role-specific versions that agents can reference or edit as local drafts.";
+      case "Ledger":
+        return "Communication state per application: last inbound, last outbound, next action, and follow-up date.";
+      case "Actions":
+        return "Agent suggestions that still require review, approval, or local execution.";
       case "Contacts":
         return "Recruiters, hiring managers, and warm contacts linked to applications.";
       case "Pipeline":
@@ -1018,6 +1062,12 @@ export class AppComponent {
       jobApplications,
       jobJobs,
       jobInterviews,
+      jobSourceInbox,
+      jobFits,
+      jobPackets,
+      jobCvBank,
+      jobLedger,
+      jobActions,
       jobSearchSetup,
       jobContacts,
       cvRecords,
@@ -1034,6 +1084,12 @@ export class AppComponent {
       templateKey === "job_search" ? this.api.runView("job_search.applications").catch(() => null) : Promise.resolve(null),
       templateKey === "job_search" ? this.api.runView("job_search.jobs").catch(() => null) : Promise.resolve(null),
       templateKey === "job_search" ? this.api.runView("job_search.interviews").catch(() => null) : Promise.resolve(null),
+      templateKey === "job_search" ? this.api.runView("job_search.source_inbox").catch(() => null) : Promise.resolve(null),
+      templateKey === "job_search" ? this.api.runView("job_search.job_fits").catch(() => null) : Promise.resolve(null),
+      templateKey === "job_search" ? this.api.runView("job_search.application_packets").catch(() => null) : Promise.resolve(null),
+      templateKey === "job_search" ? this.api.runView("job_search.cv_bank").catch(() => null) : Promise.resolve(null),
+      templateKey === "job_search" ? this.api.runView("job_search.communication_ledger").catch(() => null) : Promise.resolve(null),
+      templateKey === "job_search" ? this.api.runView("job_search.action_suggestions").catch(() => null) : Promise.resolve(null),
       templateKey === "job_search" ? this.api.getJobSearchSetup().catch(() => null) : Promise.resolve(null),
       templateKey === "job_search" ? this.api.listXrmRecords({ objectType: "job_contact", limit: 100 }).catch(() => []) : Promise.resolve([]),
       templateKey === "job_search" ? this.api.listXrmRecords({ objectType: "cv_version", limit: 100 }).catch(() => []) : Promise.resolve([]),
@@ -1051,6 +1107,12 @@ export class AppComponent {
     this.jobApplications.set(jobApplications);
     this.jobJobs.set(jobJobs);
     this.jobInterviews.set(jobInterviews);
+    this.jobSourceInbox.set(jobSourceInbox);
+    this.jobFits.set(jobFits);
+    this.jobPackets.set(jobPackets);
+    this.jobCvBank.set(jobCvBank);
+    this.jobLedger.set(jobLedger);
+    this.jobActions.set(jobActions);
     this.jobSearchSetup.set(jobSearchSetup);
     this.jobContacts.set(jobContacts);
     this.cvRecords.set(cvRecords.filter((record) => this.recordBelongsToMode(record, "job_search")));
@@ -1455,6 +1517,36 @@ export class AppComponent {
     this.syncUrlForCurrentNav();
   }
 
+  setSourceInboxSearch(value: string) {
+    this.sourceInboxSearch.set(value);
+    this.syncUrlForCurrentNav();
+  }
+
+  setFitReviewSearch(value: string) {
+    this.fitReviewSearch.set(value);
+    this.syncUrlForCurrentNav();
+  }
+
+  setPacketSearch(value: string) {
+    this.packetSearch.set(value);
+    this.syncUrlForCurrentNav();
+  }
+
+  setCvBankSearch(value: string) {
+    this.cvBankSearch.set(value);
+    this.syncUrlForCurrentNav();
+  }
+
+  setLedgerSearch(value: string) {
+    this.ledgerSearch.set(value);
+    this.syncUrlForCurrentNav();
+  }
+
+  setActionSearch(value: string) {
+    this.actionSearch.set(value);
+    this.syncUrlForCurrentNav();
+  }
+
   setContactSearch(value: string) {
     this.contactSearch.set(value);
   }
@@ -1691,6 +1783,10 @@ export class AppComponent {
     const value = row[key];
     if (value === undefined || value === null || value === "") return fallback;
     return typeof value === "object" ? JSON.stringify(value) : String(value);
+  }
+
+  viewColumns(result: ViewRunResult | null, fallback: string[]) {
+    return result?.view?.columns?.length ? result.view.columns : fallback;
   }
 
   rowDate(row: Record<string, unknown>, key: string) {
@@ -2052,6 +2148,12 @@ export class AppComponent {
       add("page", this.jobPage(), 1);
       add("page_size", this.jobPageSize(), 25);
     }
+    if (item === "Source Inbox") add("q", this.sourceInboxSearch(), "");
+    if (item === "Fit Review") add("q", this.fitReviewSearch(), "");
+    if (item === "Packets") add("q", this.packetSearch(), "");
+    if (item === "CV Bank") add("q", this.cvBankSearch(), "");
+    if (item === "Ledger") add("q", this.ledgerSearch(), "");
+    if (item === "Actions") add("q", this.actionSearch(), "");
     if (item === "Pipeline") {
       add("q", this.pipelineSearch(), "");
       add("last_contacted", this.pipelineLastContactFilter(), "any");
@@ -2099,6 +2201,12 @@ export class AppComponent {
       this.jobPage.set(Number(query.get("page") ?? "1") || 1);
       this.jobPageSize.set(Number(query.get("page_size") ?? "25") || 25);
     }
+    if (nav === "Source Inbox") this.sourceInboxSearch.set(query.get("q") ?? "");
+    if (nav === "Fit Review") this.fitReviewSearch.set(query.get("q") ?? "");
+    if (nav === "Packets") this.packetSearch.set(query.get("q") ?? "");
+    if (nav === "CV Bank") this.cvBankSearch.set(query.get("q") ?? "");
+    if (nav === "Ledger") this.ledgerSearch.set(query.get("q") ?? "");
+    if (nav === "Actions") this.actionSearch.set(query.get("q") ?? "");
     if (nav === "Pipeline") {
       this.pipelineSearch.set(query.get("q") ?? "");
       this.pipelineLastContactFilter.set(query.get("last_contacted") ?? "any");
@@ -2130,9 +2238,19 @@ export class AppComponent {
               ? "/applications"
               : slug === "job"
                 ? "/jobs"
-                : slug === "job_contact"
-                  ? "/contacts"
-                  : "/settings/advanced";
+                : slug === "raw_job_signal"
+                  ? "/source-inbox"
+                  : slug === "job_fit"
+                    ? "/fit-review"
+                    : slug === "application_packet"
+                      ? "/packets"
+                      : ["cv_version", "cv_template", "cover_letter", "cover_letter_template", "document"].includes(slug ?? "")
+                        ? "/cv-bank"
+                        : ["action_suggestion", "approval_request", "action_run"].includes(slug ?? "")
+                          ? "/actions"
+                          : slug === "job_contact"
+                            ? "/contacts"
+                            : "/settings/advanced";
     return `${path}?record=${encodeURIComponent(record.id)}`;
   }
 
@@ -2231,8 +2349,14 @@ export class AppComponent {
     if (path.startsWith("/people") || path === "/records/person") return "People";
     if (path.startsWith("/companies") || path === "/records/company") return "Companies";
     if (path.startsWith("/setup")) return "Setup";
+    if (path.startsWith("/source-inbox") || path === "/records/raw_job_signal") return "Source Inbox";
     if (path.startsWith("/applications") || path === "/records/application") return "Applications";
     if (path.startsWith("/jobs") || path === "/records/job") return "Jobs";
+    if (path.startsWith("/fit-review") || path === "/records/job_fit") return "Fit Review";
+    if (path.startsWith("/packets") || path === "/records/application_packet") return "Packets";
+    if (path.startsWith("/cv-bank") || path === "/records/cv_version" || path === "/records/cv_template" || path === "/records/cover_letter" || path === "/records/cover_letter_template") return "CV Bank";
+    if (path.startsWith("/ledger")) return "Ledger";
+    if (path.startsWith("/actions") || path === "/records/action_suggestion" || path === "/records/approval_request" || path === "/records/action_run") return "Actions";
     if (path.startsWith("/contacts") || path === "/records/job_contact") return "Contacts";
     if (path.startsWith("/settings/advanced") || path.startsWith("/views") || path.startsWith("/records") || path.startsWith("/timeline")) return "Advanced";
     if (path.startsWith("/settings")) return "Settings";

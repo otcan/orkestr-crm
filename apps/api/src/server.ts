@@ -211,6 +211,103 @@ export async function buildServer() {
     return reply.status(201).send(setup);
   });
 
+  app.get("/api/job-search/profile", async () => {
+    return services.getJobSearchProfile();
+  });
+
+  app.get("/api/job-search/daily-contract", async () => {
+    return services.getJobSearchDailyContract();
+  });
+
+  app.get("/api/job-search/source-inbox", async (request) => {
+    const query = request.query as { q?: string; status?: string; limit?: string };
+    return services.listJobSearchSourceInbox({
+      query: query.q,
+      status: query.status,
+      limit: query.limit ? Number(query.limit) : undefined
+    });
+  });
+
+  app.post("/api/job-search/source-inbox", async (request, reply) => {
+    const record = await services.ingestJobSearchRawSignal(request.body);
+    return reply.status(201).send(record);
+  });
+
+  app.post("/api/job-search/source-inbox/:id/promote", async (request, reply) => {
+    const params = request.params as { id: string };
+    const body = request.body && typeof request.body === "object" ? (request.body as Record<string, unknown>) : {};
+    const result = await services.promoteJobSearchSignalToJob({ ...body, signalId: params.id });
+    return reply.status(result.promoted ? 201 : 200).send(result);
+  });
+
+  app.post("/api/job-search/jobs/check-duplicate", async (request) => {
+    return services.checkJobSearchDuplicate(request.body);
+  });
+
+  app.post("/api/job-search/jobs/channel", async (request) => {
+    return services.suggestJobSearchApplicationChannel(request.body);
+  });
+
+  app.post("/api/job-search/application-packets", async (request, reply) => {
+    const packet = await services.prepareJobSearchApplicationPacket(request.body);
+    return reply.status(201).send(packet);
+  });
+
+  app.get("/api/job-search/applications/:id/ledger", async (request) => {
+    const params = request.params as { id: string };
+    const query = request.query as { limit?: string };
+    return services.getJobSearchApplicationLedger({
+      applicationId: params.id,
+      limit: query.limit ? Number(query.limit) : undefined
+    });
+  });
+
+  app.post("/api/job-search/applications/:id/events", async (request, reply) => {
+    const params = request.params as { id: string };
+    const body = request.body && typeof request.body === "object" ? (request.body as Record<string, unknown>) : {};
+    const event = await services.recordJobSearchApplicationEvent({ ...body, applicationId: params.id });
+    return reply.status(201).send(event);
+  });
+
+  app.get("/api/job-search/action-queue", async (request) => {
+    const query = request.query as { status?: string; limit?: string };
+    return services.getJobSearchActionQueue({
+      status: query.status,
+      limit: query.limit ? Number(query.limit) : undefined
+    });
+  });
+
+  app.post("/api/job-search/action-queue", async (request, reply) => {
+    const result = await services.proposeJobSearchAction(request.body);
+    return reply.status(201).send(result);
+  });
+
+  app.post("/api/job-search/action-queue/:id/approve", async (request) => {
+    const params = request.params as { id: string };
+    const body = request.body && typeof request.body === "object" ? (request.body as Record<string, unknown>) : {};
+    return services.approveJobSearchAction({ ...body, actionId: params.id });
+  });
+
+  app.post("/api/job-search/action-queue/:id/reject", async (request) => {
+    const params = request.params as { id: string };
+    const body = request.body && typeof request.body === "object" ? (request.body as Record<string, unknown>) : {};
+    return services.rejectJobSearchAction({ ...body, actionId: params.id });
+  });
+
+  app.post("/api/job-search/action-queue/:id/run-local", async (request, reply) => {
+    const params = request.params as { id: string };
+    const body = request.body && typeof request.body === "object" ? (request.body as Record<string, unknown>) : {};
+    const result = await services.runJobSearchLocalAction({ ...body, actionId: params.id });
+    return reply.status(201).send(result);
+  });
+
+  app.post("/api/job-search/action-queue/:id/result", async (request, reply) => {
+    const params = request.params as { id: string };
+    const body = request.body && typeof request.body === "object" ? (request.body as Record<string, unknown>) : {};
+    const result = await services.recordJobSearchActionResult({ ...body, actionId: params.id });
+    return reply.status(201).send(result);
+  });
+
   app.get("/api/xrm/records/:id/files", async (request) => {
     const params = request.params as { id: string };
     const query = request.query as { limit?: string };
@@ -395,6 +492,11 @@ export async function buildServer() {
 
   app.post("/api/outreach-events/backfill", async (request) => {
     return services.backfillLegacyOutreachEvents(request.body);
+  });
+
+  app.post("/api/outreach/claims", async (request, reply) => {
+    const result = await services.claimOutreachRecipients(request.body);
+    return reply.status(result.claimed > 0 ? 201 : 200).send(result);
   });
 
   app.post("/api/activities", async (request, reply) => {

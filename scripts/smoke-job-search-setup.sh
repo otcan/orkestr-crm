@@ -107,7 +107,7 @@ node -e '
 ' "$tmp_dir/next.json"
 
 ./oxrm cli mcp:read oxrm://setup/job-search >"$tmp_dir/mcp-setup.json"
-grep -F "Configured job search operating playbook" "$tmp_dir/mcp-setup.json" >/dev/null
+grep -F "Job search operating playbook" "$tmp_dir/mcp-setup.json" >/dev/null
 
 ./oxrm cli mcp:read oxrm://playbook/job-search >"$tmp_dir/mcp-playbook.json"
 grep -F "Job search operating playbook" "$tmp_dir/mcp-playbook.json" >/dev/null

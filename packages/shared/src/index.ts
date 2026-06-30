@@ -543,8 +543,14 @@ export const xrmSlugSchema = z
   .max(96)
   .regex(/^[a-z][a-z0-9_.-]*$/);
 
+export const xrmFieldKeySchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[a-zA-Z][a-zA-Z0-9_.-]*$/);
+
 export const xrmFieldDefinitionInputSchema = z.object({
-  key: xrmSlugSchema,
+  key: xrmFieldKeySchema,
   label: z.string().min(1),
   dataType: z.enum(["text", "long_text", "number", "boolean", "date", "datetime", "url", "email", "json", "select", "file_ref"]).default("text"),
   required: z.boolean().default(false),
@@ -635,7 +641,7 @@ export const upsertXrmSemanticFieldSchema = z.object({
 
 export const upsertXrmFieldMappingSchema = z.object({
   objectType: xrmSlugSchema,
-  fieldKey: xrmSlugSchema,
+  fieldKey: xrmFieldKeySchema,
   semanticFieldKey: xrmSlugSchema,
   confidence: z.number().int().min(0).max(100).default(100),
   transform: z.record(z.string(), z.unknown()).optional(),

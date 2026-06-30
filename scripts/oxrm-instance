@@ -43,8 +43,6 @@ shift 2
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 env_file="$repo_root/instances/${instance}.local.env"
 example_env_file="$repo_root/instances/${instance}.env.example"
-project="oxrm-${instance}"
-image="${project}:local"
 app_services=(scheduler worker web mcp api backup)
 node_services=(api mcp web worker scheduler backup)
 
@@ -210,6 +208,14 @@ set -a
 source "$env_file"
 set +a
 
+project="${OXRM_COMPOSE_PROJECT:-oxrm-${instance}}"
+image="${project}:local"
+compose_files=(-f "$repo_root/docker-compose.yml")
+volume_override_file="$repo_root/instances/${instance}.volume.override.yml"
+if [[ -f "$volume_override_file" ]]; then
+  compose_files+=(-f "$volume_override_file")
+fi
+
 if [[ "${NODE_ENV:-development}" == "production" ]]; then
   if [[ -z "${POSTGRES_PASSWORD:-}" || "${POSTGRES_PASSWORD:-}" == "change-me" || "${POSTGRES_PASSWORD:-}" == "oxrm" ]]; then
     echo "Refusing to run production instance $instance with a placeholder POSTGRES_PASSWORD." >&2
@@ -218,7 +224,7 @@ if [[ "${NODE_ENV:-development}" == "production" ]]; then
 fi
 
 compose() {
-  docker compose --env-file "$env_file" -p "$project" "$@"
+  docker compose --env-file "$env_file" "${compose_files[@]}" -p "$project" "$@"
 }
 
 build_node_image() {
@@ -261,6 +267,10 @@ container_name() {
 
 internal_database_url() {
   printf 'postgres://%s:%s@postgres:5432/%s' "$POSTGRES_USER" "$POSTGRES_PASSWORD" "$POSTGRES_DB"
+}
+
+postgres_volume_name() {
+  printf '%s' "${POSTGRES_VOLUME_NAME:-${project}-postgres-data}"
 }
 
 ensure_network() {
@@ -318,6 +328,7 @@ direct_run_node_service() {
     -e OXRM_DEPLOY_GITHUB_RUN_ID="${OXRM_DEPLOY_GITHUB_RUN_ID:-}" \
     -e OXRM_DEPLOY_GITHUB_RUN_NUMBER="${OXRM_DEPLOY_GITHUB_RUN_NUMBER:-}" \
     -e OXRM_DEPLOYED_AT="${OXRM_DEPLOYED_AT:-}" \
+    -e OXRM_WORKSPACE_MODE="${OXRM_WORKSPACE_MODE:-job_search}" \
     -e DATABASE_URL="$(internal_database_url)" \
     -e REDIS_URL=redis://redis:6379 \
     -e API_HOST=0.0.0.0 \
@@ -340,7 +351,7 @@ direct_up() {
     --name "$(container_name postgres)" \
     --network "$project" \
     --network-alias postgres \
-    -v "${project}-postgres-data:/var/lib/postgresql/data" \
+    -v "$(postgres_volume_name):/var/lib/postgresql/data" \
     -e POSTGRES_DB="$POSTGRES_DB" \
     -e POSTGRES_USER="$POSTGRES_USER" \
     -e POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
@@ -369,7 +380,11 @@ direct_down() {
 
 direct_reset() {
   direct_down
-  docker volume rm "${project}-postgres-data" >/dev/null 2>&1 || true
+  if [[ -n "${POSTGRES_VOLUME_NAME:-}" && "${POSTGRES_VOLUME_PROTECT:-1}" != "0" ]]; then
+    echo "Skipping protected Postgres volume ${POSTGRES_VOLUME_NAME}; set POSTGRES_VOLUME_PROTECT=0 to delete it." >&2
+  else
+    docker volume rm "$(postgres_volume_name)" >/dev/null 2>&1 || true
+  fi
   docker network rm "$project" >/dev/null 2>&1 || true
 }
 

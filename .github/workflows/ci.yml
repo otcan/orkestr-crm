@@ -33,7 +33,7 @@ jobs:
         run: pnpm build
 
       - name: Check shell scripts
-        run: bash -n oxrm ocrm scripts/oxrm-instance scripts/oxrm-internal scripts/codex-demo.sh scripts/deploy-live-demo scripts/smoke-user-journey.sh scripts/smoke-runtime-repair.sh scripts/smoke-job-search-setup.sh scripts/check-workspace-mode-ui.sh
+        run: bash -n oxrm ocrm scripts/oxrm-instance scripts/oxrm-internal scripts/codex-demo.sh scripts/deploy-live-demo scripts/smoke-user-journey.sh scripts/smoke-runtime-repair.sh scripts/smoke-job-search-setup.sh scripts/smoke-job-search-actions.sh scripts/check-workspace-mode-ui.sh
 
       - name: Launch naming and docs guard
         run: |
@@ -131,6 +131,9 @@ jobs:
 
       - name: Job search setup smoke
         run: bash scripts/smoke-job-search-setup.sh
+
+      - name: Job search action queue smoke
+        run: bash scripts/smoke-job-search-actions.sh
 
       - name: Demo reset seed smoke
         run: |
