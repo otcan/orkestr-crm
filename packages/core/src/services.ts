@@ -56,7 +56,7 @@ import {
   workspaceLayoutSchema,
   upsertXrmRecordSchema
 } from "@oxrm/shared";
-import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, or } from "drizzle-orm";
+import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 export interface ServiceContext {
@@ -145,6 +145,19 @@ const backfillLegacyOutreachEventsSchema = z.object({
   overwriteConfirmedBody: z.boolean().default(false)
 });
 
+const outreachClaimSchema = z.object({
+  campaign: z.string().min(1).optional(),
+  channel: z
+    .enum(["connection_request", "native_linkedin", "salesnav_inmail", "salesnav_reply"])
+    .default("connection_request"),
+  statuses: z.array(z.string().min(1)).min(1).max(10).default(["selected", "planned_connect"]),
+  limit: z.number().int().min(1).max(50).default(1),
+  operator: z.string().min(1).max(128).default("codex"),
+  runId: z.string().min(1).max(128).optional(),
+  weeklyCap: z.number().int().min(0).max(500).default(100),
+  dailyCap: z.number().int().min(0).max(500).optional()
+});
+
 const jobSearchSetupSourceSchema = z.object({
   title: z.string().min(1),
   channel: z.enum(["job_board", "career_page", "email", "referral", "manual", "browser", "csv", "api"]).default("manual"),
@@ -154,16 +167,47 @@ const jobSearchSetupSourceSchema = z.object({
   privacyNotes: z.string().optional()
 });
 
+const jobSearchSetupProfileSchema = z
+  .object({
+    title: z.string().min(1).default("Default job-search profile"),
+    targetRoles: z.array(z.string()).default([]),
+    targetLocations: z.array(z.string()).default([]),
+    workMode: z.string().default("remote_or_hybrid"),
+    seniority: z.string().default("senior"),
+    mustHave: z.array(z.string()).default([]),
+    niceToHave: z.array(z.string()).default([]),
+    exclusions: z.array(z.string()).default([]),
+    preferredApplicationChannels: z.array(z.string()).default(["warm_referral_first", "company_careers", "platform_then_recruiter_email"]),
+    fitThreshold: z.number().int().min(0).max(100).default(75),
+    pushableThreshold: z.number().int().min(0).max(100).default(85),
+    agentInstructions: z.string().optional(),
+    humanInstructions: z.string().optional()
+  })
+  .default({
+    title: "Default job-search profile",
+    targetRoles: [],
+    targetLocations: [],
+    workMode: "remote_or_hybrid",
+    seniority: "senior",
+    mustHave: [],
+    niceToHave: [],
+    exclusions: [],
+    preferredApplicationChannels: ["warm_referral_first", "company_careers", "platform_then_recruiter_email"],
+    fitThreshold: 75,
+    pushableThreshold: 85
+  });
+
 const jobSearchSetupSchema = z.object({
+  profile: jobSearchSetupProfileSchema,
   sources: z.array(jobSearchSetupSourceSchema).default([]),
   cvStrategy: z
     .object({
-      mode: z.enum(["master", "master_plus_variants", "role_specific", "manual"]).default("master_plus_variants"),
+      mode: z.enum(["master", "master_plus_variants", "role_specific", "manual"]).default("master"),
       baseCvPath: z.string().optional(),
       variantPolicy: z.string().optional(),
       editorInstructions: z.string().optional()
     })
-    .default({ mode: "master_plus_variants" }),
+    .default({ mode: "master" }),
   coverLetterStrategy: z
     .object({
       mode: z.enum(["never", "high_fit_only", "every_application", "manual"]).default("high_fit_only"),
@@ -208,6 +252,178 @@ const jobSearchSetupSchema = z.object({
     })
     .default({ channels: ["in_app"], digestCadence: "daily" }),
   notes: z.string().optional()
+});
+
+const jobSearchSourceInboxListSchema = z.object({
+  query: z.string().optional(),
+  status: z.string().optional(),
+  limit: z.number().int().min(1).max(500).default(100)
+});
+
+const jobSearchRawSignalSchema = z.object({
+  externalKey: z.string().optional(),
+  title: z.string().optional(),
+  sourceTitle: z.string().default("Manual source"),
+  sourceKind: z.string().default("manual"),
+  sourceUrl: z.string().optional(),
+  receivedAt: z.string().datetime().optional(),
+  status: z.string().default("new"),
+  company: z.string().optional(),
+  role: z.string().optional(),
+  location: z.string().optional(),
+  postingUrl: z.string().optional(),
+  rawText: z.string().optional(),
+  extractionStatus: z.string().default("manual"),
+  dedupeStatus: z.string().default("unchecked"),
+  agentNotes: z.string().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional()
+});
+
+const jobSearchPromoteSignalSchema = z.object({
+  signalId: z.string().uuid(),
+  jobId: z.string().uuid().optional(),
+  createJob: z.boolean().default(true),
+  fields: z.record(z.string(), z.unknown()).default({}),
+  status: z.string().default("open")
+});
+
+const jobSearchDuplicateCheckSchema = z.object({
+  jobId: z.string().uuid().optional(),
+  title: z.string().optional(),
+  company: z.string().optional(),
+  location: z.string().optional(),
+  url: z.string().optional(),
+  dedupeKey: z.string().optional(),
+  limit: z.number().int().min(1).max(100).default(20)
+});
+
+const jobSearchChannelSchema = z.object({
+  jobId: z.string().uuid().optional(),
+  applicationId: z.string().uuid().optional(),
+  contactEmail: z.string().optional(),
+  platform: z.string().optional(),
+  source: z.string().optional(),
+  quickApplyAvailable: z.boolean().optional(),
+  platformApplyAvailable: z.boolean().optional(),
+  directEmailAvailable: z.boolean().optional()
+});
+
+const jobSearchApplicationPacketSchema = z.object({
+  applicationId: z.string().uuid().optional(),
+  jobId: z.string().uuid().optional(),
+  fitId: z.string().uuid().optional(),
+  cvVersionId: z.string().uuid().optional(),
+  coverLetterId: z.string().uuid().optional(),
+  targetContactId: z.string().uuid().optional(),
+  title: z.string().optional(),
+  company: z.string().optional(),
+  role: z.string().optional(),
+  channel: z.string().optional(),
+  status: z.string().default("draft"),
+  approvalStatus: z.string().default("needs_human_review"),
+  packetSummary: z.string().optional(),
+  humanReviewNotes: z.string().optional(),
+  fileRefs: z.array(z.string()).default([]),
+  metadata: z.record(z.string(), z.unknown()).optional()
+});
+
+const jobSearchApplicationLedgerSchema = z.object({
+  applicationId: z.string().uuid(),
+  limit: z.number().int().min(1).max(200).default(100)
+});
+
+const jobSearchApplicationEventSchema = z.object({
+  applicationId: z.string().uuid(),
+  type: z
+    .enum([
+      "connection_request_sent",
+      "connection_request_received",
+      "connection_sent",
+      "connection_accepted",
+      "message_sent",
+      "message_received",
+      "inmail_sent",
+      "email_sent",
+      "email_received",
+      "follow_up_due",
+      "booking_created",
+      "meeting_booked",
+      "not_interested",
+      "converted",
+      "manual_note"
+    ])
+    .default("manual_note"),
+  channel: z.enum(["linkedin", "salesnav", "email", "scheduler", "manual"]).default("manual"),
+  direction: z.enum(["outbound", "inbound", "internal"]).default("internal"),
+  subject: z.string().optional(),
+  body: z.string().optional(),
+  externalUrl: z.string().url().optional(),
+  externalReference: z.string().optional(),
+  humanConfirmed: z.boolean().default(false),
+  confirmationSource: z.string().optional(),
+  proof: z.string().optional(),
+  occurredAt: z.string().datetime().optional(),
+  idempotencyKey: z.string().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional()
+});
+
+const jobSearchActionQueueSchema = z.object({
+  status: z.string().optional(),
+  limit: z.number().int().min(1).max(200).default(100)
+});
+
+const jobSearchActionProposalSchema = z.object({
+  title: z.string().min(1),
+  targetViewKey: z.string().optional(),
+  targetObjectType: z.string().optional(),
+  targetRecordId: z.string().optional(),
+  targetRecord: z.string().optional(),
+  actionKind: z.string().min(1),
+  safetyClass: z.string().default("human_decision_required"),
+  priority: z.number().int().min(0).max(10).default(1),
+  confidence: z.number().int().min(0).max(100).default(50),
+  recommendedAction: z.string().min(1),
+  reason: z.string().optional(),
+  evidence: z.string().optional(),
+  draftOutput: z.string().optional(),
+  approvalRequired: z.boolean().default(true),
+  approvalReason: z.string().optional(),
+  createdByAgent: z.string().default("agent"),
+  runId: z.string().optional(),
+  auditRef: z.string().optional(),
+  dueAt: z.string().datetime().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional()
+});
+
+const jobSearchActionDecisionSchema = z.object({
+  actionId: z.string().uuid(),
+  decidedBy: z.string().default("human"),
+  decisionReason: z.string().optional()
+});
+
+const jobSearchActionLocalRunSchema = z.object({
+  actionId: z.string().uuid(),
+  mode: z.enum(["dry_run", "draft_only", "local_only"]).default("draft_only"),
+  outputSummary: z.string().optional(),
+  outputSnapshot: z.record(z.string(), z.unknown()).default({}),
+  operator: z.string().default("agent"),
+  auditRef: z.string().optional()
+});
+
+const jobSearchActionResultSchema = z.object({
+  actionId: z.string().uuid(),
+  status: z.enum(["completed", "failed", "skipped"]).default("completed"),
+  resultType: z.enum(["local_only", "draft_created", "external_send", "external_upload", "external_apply", "external_message"]).default("local_only"),
+  outputSummary: z.string().optional(),
+  outputSnapshot: z.record(z.string(), z.unknown()).default({}),
+  error: z.string().optional(),
+  externalEffectDeclared: z.boolean().default(false),
+  humanConfirmed: z.boolean().default(false),
+  proof: z.string().optional(),
+  externalReference: z.string().optional(),
+  externalUrl: z.string().url().optional(),
+  recordedBy: z.string().default("human"),
+  auditRef: z.string().optional()
 });
 
 type ViewObjectType = z.infer<typeof viewObjectTypeSchema>;
@@ -544,8 +760,176 @@ function linesList(values: string[]) {
   return values.filter(Boolean).length > 0 ? values.filter(Boolean).map((value) => `- ${value}`).join("\n") : "- Not specified yet";
 }
 
+function multiLine(values: string[]) {
+  return values.map((value) => compactText(value)).filter((value): value is string => Boolean(value)).join("\n");
+}
+
+function firstNonEmpty(...values: Array<unknown>) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+    if (typeof value === "number" || typeof value === "boolean") {
+      return String(value);
+    }
+  }
+  return undefined;
+}
+
+function actionApprovalRequired(record: { fields?: unknown } | null | undefined) {
+  const fields = xrmFields(record);
+  const value = fields["approvalRequired"];
+  if (typeof value === "boolean") {
+    return value;
+  }
+  const text = String(value ?? "").toLowerCase();
+  if (!text.trim()) {
+    return false;
+  }
+  if (["false", "no", "none", "not_required", "not required"].some((entry) => text.includes(entry))) {
+    return false;
+  }
+  return ["true", "yes", "required", "human", "approval", "always"].some((entry) => text.includes(entry));
+}
+
+function actionApprovalDecision(record: { fields?: unknown } | null | undefined) {
+  return xrmField(record, "approvalDecision", xrmField(record, "status")).toLowerCase();
+}
+
+function actionIsApproved(record: { fields?: unknown } | null | undefined) {
+  return ["approved", "not_required"].includes(actionApprovalDecision(record));
+}
+
+function actionIsRejected(record: { fields?: unknown } | null | undefined) {
+  return actionApprovalDecision(record) === "rejected" || xrmField(record, "status").toLowerCase() === "rejected";
+}
+
+function actionKindDeclaresExternalEffect(value: string) {
+  return /^(send|upload|apply|submit|message|email|inmail|connect|post)_/.test(value.toLowerCase());
+}
+
+function actionSafetyDeclaresExternalEffect(value: string) {
+  const safetyClass = value.toLowerCase();
+  return (
+    safetyClass.includes("external_send") ||
+    safetyClass.includes("external_upload") ||
+    safetyClass.includes("external_apply") ||
+    safetyClass.includes("external_message") ||
+    safetyClass.includes("external_effect")
+  );
+}
+
+function actionResultDeclaresExternalEffect(input: { resultType?: string; externalEffectDeclared?: boolean }) {
+  return Boolean(input.externalEffectDeclared) || String(input.resultType ?? "").startsWith("external_");
+}
+
+function actionResultHasProof(input: { proof?: string | undefined; externalReference?: string | undefined; externalUrl?: string | undefined }) {
+  return Boolean(compactText(input.proof) || compactText(input.externalReference) || compactText(input.externalUrl));
+}
+
+function actionReceiptFields(fields: Record<string, unknown>) {
+  return {
+    targetRecordId: fields["targetRecordId"] ?? "",
+    evidence: fields["evidence"] ?? "",
+    safetyClass: fields["safetyClass"] ?? "",
+    approvalDecision: fields["approvalDecision"] ?? "",
+    runId: fields["runId"] ?? "",
+    externalEffectDeclared: fields["externalEffectDeclared"] ?? false
+  };
+}
+
+async function findXrmRecordByReference(db: Database, objectTypeSlug: string | undefined, recordRef: string | undefined) {
+  const ref = compactText(recordRef);
+  if (!ref) {
+    return undefined;
+  }
+
+  const uuidResult = z.string().uuid().safeParse(ref);
+  if (uuidResult.success) {
+    return db.query.xrmRecords.findFirst({
+      where: and(eq(xrmRecords.id, ref), isNull(xrmRecords.deletedAt)),
+      with: { objectType: true }
+    });
+  }
+
+  if (!objectTypeSlug) {
+    return undefined;
+  }
+
+  const objectType = await db.query.xrmObjectTypes.findFirst({ where: eq(xrmObjectTypes.slug, objectTypeSlug) });
+  if (!objectType) {
+    return undefined;
+  }
+
+  return db.query.xrmRecords.findFirst({
+    where: and(
+      eq(xrmRecords.objectTypeId, objectType.id),
+      isNull(xrmRecords.deletedAt),
+      or(eq(xrmRecords.externalKey, ref), eq(xrmRecords.displayName, ref))
+    ),
+    with: { objectType: true }
+  });
+}
+
+function jobDedupeKey(input: { company?: string | undefined; title?: string | undefined; role?: string | undefined; location?: string | undefined; url?: string | undefined }) {
+  const normalizedUrl = normalizeUrl(input.url);
+  if (normalizedUrl) {
+    return normalizedUrl;
+  }
+  return [input.company, input.title ?? input.role, input.location]
+    .map((value) => slugPart(String(value ?? "")))
+    .filter(Boolean)
+    .join("|");
+}
+
 function defaultJobSearchSetup(): JobSearchSetup {
   return jobSearchSetupSchema.parse({});
+}
+
+function buildJobSearchProfileFields(input: JobSearchSetup) {
+  const profile = input.profile;
+  const mustHave = profile.mustHave.length > 0 ? profile.mustHave : input.fitRubric.mustHave;
+  const niceToHave = profile.niceToHave.length > 0 ? profile.niceToHave : input.fitRubric.niceToHave;
+  const exclusions = profile.exclusions.length > 0 ? profile.exclusions : input.fitRubric.exclusions;
+  const missingWarnings = [
+    input.sources.length === 0 ? "No sources configured." : "",
+    input.cvStrategy.baseCvPath ? "" : "Base CV path is missing.",
+    input.coverLetterStrategy.mode !== "never" && !input.coverLetterStrategy.templatePath ? "Cover-letter template path is missing." : "",
+    mustHave.length === 0 ? "Must-have criteria are missing." : "",
+    input.automationPolicy.approvalRequired ? "" : "External-action approval is not required by policy."
+  ].filter(Boolean);
+
+  return {
+    title: profile.title,
+    status: "active",
+    targetRoles: multiLine(profile.targetRoles),
+    targetLocations: multiLine(profile.targetLocations),
+    workMode: profile.workMode,
+    seniority: profile.seniority,
+    mustHave: multiLine(mustHave),
+    niceToHave: multiLine(niceToHave),
+    exclusions: multiLine(exclusions),
+    baseCvPath: input.cvStrategy.baseCvPath,
+    coverLetterTemplatePath: input.coverLetterStrategy.templatePath,
+    fitThreshold: profile.fitThreshold || input.fitRubric.threshold,
+    pushableThreshold: profile.pushableThreshold,
+    preferredApplicationChannels: multiLine(profile.preferredApplicationChannels),
+    dailyLoop: [
+      "Read Source Inbox.",
+      "Dedupe or promote raw signals.",
+      "Score canonical jobs with evidence.",
+      "Prepare draft-only packets for high-fit roles.",
+      "Ask the human before any external submission.",
+      "Record every external action in the communication ledger."
+    ].join("\n"),
+    agentInstructions:
+      profile.agentInstructions ||
+      "Use this profile before scoring or drafting. Create raw_job_signal records first, promote canonical jobs only after dedupe, create job_fit records with current and pushable scores, and create application_packet records as drafts. Never send, upload, or apply externally.",
+    humanInstructions:
+      profile.humanInstructions ||
+      "Confirm sources, CV claims, cover letter text, fit threshold overrides, final application channel, and any external submission.",
+    missingWarnings: missingWarnings.join("\n")
+  };
 }
 
 function buildJobSearchSetupPlaybook(input: JobSearchSetup) {
@@ -566,8 +950,8 @@ function buildJobSearchSetupPlaybook(input: JobSearchSetup) {
     "## CV workflow",
     `Mode: ${input.cvStrategy.mode}`,
     `Base CV path: ${input.cvStrategy.baseCvPath || "Not set"}`,
-    input.cvStrategy.variantPolicy || "Create role-specific variants only when the fit is high enough to justify editing.",
-    input.cvStrategy.editorInstructions || "Use a generic file editor to modify CV drafts. Keep the original template separate from generated variants.",
+    input.cvStrategy.variantPolicy || "Improve the canonical/base CV for fit. Do not create additional CV versions unless explicitly approved for a specific role.",
+    input.cvStrategy.editorInstructions || "Draft concise patch suggestions against the canonical CV. Keep every claim factual and grounded in the base CV.",
     "",
     "## Cover letter workflow",
     `Mode: ${input.coverLetterStrategy.mode}`,
@@ -610,7 +994,7 @@ function buildJobSearchAgentPrompt(input: JobSearchSetup) {
     "Import or paste job postings into XRM records with source URLs and raw job descriptions.",
     "Create job_fit records using the configured rubric. Treat scores as suggestions.",
     "Create application records only for jobs that pass the configured threshold or are explicitly requested by the human.",
-    "Draft CV variants, cover letters, recruiter follow-ups, and application tasks only. Do not send or upload externally.",
+    "Draft CV fit patches against the canonical CV, cover letters, recruiter follow-ups, and application tasks only. Do not create extra CV files unless explicitly approved. Do not send or upload externally.",
     `Human approval required: ${input.automationPolicy.approvalRequired ? "yes" : "no"}.`,
     `Daily review cadence: ${input.schedule.reviewCadence}.`
   ].join("\n");
@@ -621,8 +1005,10 @@ function jobSearchSetupGaps(input: {
   timers: unknown[];
   blueprints: unknown[];
   playbook?: unknown;
+  profile?: unknown;
 }) {
   const gaps: string[] = [];
+  if (!input.profile) gaps.push("Create the active job-search profile.");
   if (input.sources.length === 0) gaps.push("Add at least one job source.");
   if (input.timers.length === 0) gaps.push("Add daily import/review timers.");
   if (input.blueprints.length === 0) gaps.push("Add action blueprints for fit scoring, CV editing, cover letters, and follow-ups.");
@@ -659,6 +1045,7 @@ function buildJobSearchSetupReadiness(input: {
   blueprints: Array<{ fields?: unknown; externalKey?: string | null; displayName?: string; [key: string]: unknown }>;
   views: Array<{ key: string }>;
   playbook?: { fields?: unknown; externalKey?: string | null; displayName?: string; [key: string]: unknown } | undefined;
+  profile?: { fields?: unknown; externalKey?: string | null; displayName?: string; [key: string]: unknown } | undefined;
 }) {
   const todos: JobSearchSetupTodo[] = [];
   const warnings: JobSearchSetupWarning[] = [];
@@ -687,6 +1074,45 @@ function buildJobSearchSetupReadiness(input: {
       suggestedAction: "Run ./oxrm cli setup:job-search to generate the playbook and setup records.",
       agentInstruction: "Do not operate the job-search workflow until the playbook exists."
     });
+  }
+
+  if (!input.profile) {
+    todo({
+      key: "profile.missing",
+      category: "profile",
+      severity: "blocking",
+      owner: "human",
+      title: "Create the active job-search profile",
+      why: "Agents need target roles, constraints, CV source, fit threshold, and channel policy before they can score or draft consistently.",
+      suggestedAction: "Run job-search setup and fill the profile section, especially target roles, exclusions, base CV path, and fit threshold.",
+      agentInstruction: "Ask the human for the missing profile before importing, scoring, drafting, or creating packets."
+    });
+  } else {
+    const title = xrmField(input.profile, "title", input.profile.displayName ?? "Job-search profile");
+    if (!hasFieldText(input.profile, "targetRoles")) {
+      warning({
+        key: "profile.target_roles_missing",
+        category: "profile",
+        message: `${title} has no target roles.`,
+        suggestedAction: "Add target roles so fit scoring can reject irrelevant jobs instead of ranking everything."
+      });
+    }
+    if (!hasFieldText(input.profile, "baseCvPath")) {
+      warning({
+        key: "profile.base_cv_missing",
+        category: "profile",
+        message: `${title} has no base CV path.`,
+        suggestedAction: "Link the canonical CV source file before asking an agent to draft CV changes."
+      });
+    }
+    if (!hasFieldText(input.profile, "exclusions")) {
+      warning({
+        key: "profile.exclusions_missing",
+        category: "profile",
+        message: `${title} has no exclusions.`,
+        suggestedAction: "Add explicit no-go constraints such as location, role type, seniority, or unsupported technologies."
+      });
+    }
   }
 
   if (input.sources.length === 0) {
@@ -755,9 +1181,9 @@ function buildJobSearchSetupReadiness(input: {
       severity: "blocking",
       owner: "human",
       title: "Define the CV editing blueprint",
-      why: "The agent needs document boundaries before it can safely draft CV variants.",
-      suggestedAction: "Configure CV mode, base CV path, variant policy, and editing rules.",
-      agentInstruction: "Do not draft CV variants until the CV blueprint exists."
+      why: "The agent needs document boundaries before it can safely draft CV edits.",
+      suggestedAction: "Configure CV mode, base CV path, fit-patch policy, and editing rules.",
+      agentInstruction: "Do not draft CV edits until the CV blueprint exists."
     });
   } else {
     const cv = findBlueprint("cv-editor", "create-application-packet", "cv version", "cv_variant", "cv variant");
@@ -766,7 +1192,7 @@ function buildJobSearchSetupReadiness(input: {
         key: "cv.base_missing",
         category: "documents",
         message: "No base CV path is linked in the CV blueprint.",
-        suggestedAction: "Link a base CV file or record so the agent can create variants without inventing source material."
+        suggestedAction: "Link the canonical/base CV file so the agent can propose fit-improving edits without inventing source material or creating extra CV copies."
       });
     }
   }
@@ -821,9 +1247,11 @@ function buildJobSearchSetupReadiness(input: {
   }
 
   const requiredViews = [
+    ["job_search.source_inbox", "Source Inbox view"],
     ["job_search.jobs", "Job postings view"],
     ["job_search.job_fits", "Job fit view"],
-    ["job_search.applications", "Applications view"]
+    ["job_search.applications", "Applications view"],
+    ["job_search.application_packets", "Application Packets view"]
   ] as const;
   for (const [key, label] of requiredViews) {
     if (!viewKeys.has(key)) {
@@ -841,9 +1269,12 @@ function buildJobSearchSetupReadiness(input: {
   }
 
   const recommendedViews = [
+    ["job_search.profile", "job-search profile"],
     ["job_search.sources", "sources"],
     ["job_search.documents", "CV/document drafts"],
+    ["job_search.cv_bank", "CV bank"],
     ["job_search.cover_letters", "cover letters"],
+    ["job_search.communication_ledger", "communication ledger"],
     ["job_search.followups_due", "follow-ups due"],
     ["job_search.action_suggestions", "action suggestions"]
   ] as const;
@@ -897,8 +1328,8 @@ function buildJobSearchSetupReadiness(input: {
       ? "Resolve blocking setup todos before importing, scoring, drafting, or creating application records."
       : "Setup has no blocking gaps; run the daily loop: read sources, inspect postings, score fit, propose actions, and draft only.",
     warnings.some((item) => item.key.startsWith("cv."))
-      ? "If the base CV is missing, ask the human for it before drafting variants."
-      : "When drafting CV variants, preserve factual claims and keep drafts local until approval.",
+      ? "If the base CV is missing, ask the human for it before drafting CV fit patches."
+      : "When drafting CV fit patches, preserve factual claims and keep drafts local until approval.",
     warnings.some((item) => item.key.startsWith("cover_letter."))
       ? "If the cover-letter template is missing, ask the human for it or keep cover letters manual."
       : "Draft cover letters only when the configured policy and threshold allow it.",
@@ -1058,6 +1489,16 @@ function displayNameFromFields(fields: Record<string, unknown>, displayField: st
     return compactText(String(value)) ?? fallback ?? "Untitled record";
   }
   return fallback ?? "Untitled record";
+}
+
+function queryRows<T>(result: unknown): T[] {
+  if (Array.isArray(result)) {
+    return result as T[];
+  }
+  if (isRecord(result) && Array.isArray(result["rows"])) {
+    return result["rows"] as T[];
+  }
+  return [];
 }
 
 function mergeOutreachMetadata(activityInput: NonNullable<OutreachEventInput["activity"]>) {
@@ -1812,8 +2253,9 @@ export function createCrmServices({ db, backupsRequired = false }: ServiceContex
     },
 
     async getJobSearchSetup() {
-      const [playbooks, sources, timers, blueprints, views] = await Promise.all([
+      const [playbooks, profiles, sources, timers, blueprints, views] = await Promise.all([
         this.searchXrmRecords({ objectType: "operator_playbook", limit: 200 }),
+        this.searchXrmRecords({ objectType: "job_search_profile", limit: 200 }),
         this.searchXrmRecords({ objectType: "source_config", limit: 200 }),
         this.searchXrmRecords({ objectType: "automation_timer", limit: 200 }),
         this.searchXrmRecords({ objectType: "action_blueprint", limit: 200 }),
@@ -1821,32 +2263,43 @@ export function createCrmServices({ db, backupsRequired = false }: ServiceContex
       ]);
       const jobSearchSetupOnly = (record: { externalKey?: string | null; metadata?: unknown; source?: string | null }) =>
         record.externalKey?.startsWith("job-search:setup:") ||
+        record.externalKey?.startsWith("job-search:source:") ||
+        record.externalKey?.startsWith("job-search:timer:") ||
+        record.externalKey?.startsWith("job-search:blueprint:") ||
+        record.externalKey?.startsWith("job-search:profile:") ||
         record.externalKey === "job-search:playbook:generated" ||
+        record.externalKey === "job-search:playbook:start" ||
         record.source === "job-search-setup" ||
         jsonObject(record.metadata)["source"] === "job-search-setup";
       const setupFirst = (record: { externalKey?: string | null }) => (record.externalKey?.startsWith("job-search:setup:") ? 0 : 1);
       const jobPlaybooks = playbooks.filter(jobSearchSetupOnly).sort((left, right) => setupFirst(left) - setupFirst(right));
+      const jobProfiles = profiles.filter(jobSearchSetupOnly).sort((left, right) => setupFirst(left) - setupFirst(right));
       const jobSources = sources.filter(jobSearchSetupOnly).sort((left, right) => setupFirst(left) - setupFirst(right));
       const jobTimers = timers.filter(jobSearchSetupOnly).sort((left, right) => setupFirst(left) - setupFirst(right));
       const jobBlueprints = blueprints.filter(jobSearchSetupOnly).sort((left, right) => setupFirst(left) - setupFirst(right));
       const playbook = jobPlaybooks.find((record) => record.externalKey === "job-search:playbook:generated") ?? jobPlaybooks[0];
+      const profile =
+        jobProfiles.find((record) => record.externalKey === "job-search:setup:profile:active") ??
+        jobProfiles.find((record) => xrmField(record, "status").toLowerCase() === "active") ??
+        jobProfiles[0];
       const findBlueprint = (...aliases: string[]) => jobBlueprints.find((record) => matchesJobSearchBlueprint(record, aliases));
       const normalizedInput = defaultJobSearchSetup();
       const playbookText = xrmField(playbook, "playbookBody") || buildJobSearchSetupPlaybook(normalizedInput);
       const agentPrompt = xrmField(playbook, "agentInstructions") || buildJobSearchAgentPrompt(normalizedInput);
-      const gaps = jobSearchSetupGaps({ sources: jobSources, timers: jobTimers, blueprints: jobBlueprints, playbook });
+      const gaps = jobSearchSetupGaps({ sources: jobSources, timers: jobTimers, blueprints: jobBlueprints, playbook, profile });
       const readiness = buildJobSearchSetupReadiness({
         sources: jobSources,
         timers: jobTimers,
         blueprints: jobBlueprints,
         views,
-        playbook
+        playbook,
+        profile
       });
 
       return {
         configured: readiness.configured,
         templateKey: "job_search",
-        profile: playbook ?? null,
+        profile: profile ?? null,
         sources: jobSources,
         timers: jobTimers,
         blueprints: jobBlueprints,
@@ -1890,6 +2343,955 @@ export function createCrmServices({ db, backupsRequired = false }: ServiceContex
           "./oxrm cli mcp:read oxrm://playbook/job-search",
           "./oxrm cli mcp:read crm://queue/today"
         ]
+      };
+    },
+
+    async getJobSearchProfile() {
+      const setup = await this.getJobSearchSetup();
+      return setup.profile;
+    },
+
+    async getJobSearchDailyContract() {
+      const [setup, sourceInbox, jobs, fits, applications, packets, suggestions] = await Promise.all([
+        this.getJobSearchSetup(),
+        this.runView({ key: "job_search.source_inbox", limit: 50 }).catch(() => null),
+        this.runView({ key: "job_search.jobs", limit: 50 }).catch(() => null),
+        this.runView({ key: "job_search.job_fits", limit: 50 }).catch(() => null),
+        this.runView({ key: "job_search.applications", limit: 50 }).catch(() => null),
+        this.runView({ key: "job_search.application_packets", limit: 50 }).catch(() => null),
+        this.runView({ key: "job_search.action_suggestions", limit: 50 }).catch(() => null)
+      ]);
+
+      return {
+        profile: setup.profile,
+        readiness: {
+          configured: setup.configured,
+          score: setup.readinessScore,
+          nextAction: setup.nextAction,
+          todos: setup.todos,
+          warnings: setup.warnings
+        },
+        dailyLoop: [
+          "Read job_search.source_inbox.",
+          "Dedupe each raw_job_signal before creating or updating a job.",
+          "Promote only canonical postings to job records.",
+          "Create or update job_fit records with currentFitRate, pushableFitRate, evidence, and reasonNotHigher.",
+          "For high-fit jobs, prepare application_packet drafts linked to job, application, CV, cover letter, contact, and fit.",
+          "Ask the human before external applications, uploads, emails, or recruiter messages.",
+          "Record confirmed external actions in the application communication ledger."
+        ],
+        views: {
+          sourceInbox,
+          jobs,
+          fits,
+          applications,
+          packets,
+          suggestions
+        },
+        mcpTools: [
+          "job_search.ingest_raw_signal",
+          "job_search.list_source_inbox",
+          "job_search.check_duplicate",
+          "job_search.promote_signal_to_job",
+          "job_search.suggest_application_channel",
+          "job_search.prepare_application_packet",
+          "job_search.get_application_ledger",
+          "job_search.record_application_event",
+          "job_search.get_action_queue",
+          "job_search.propose_action",
+          "job_search.approve_action",
+          "job_search.reject_action",
+          "job_search.run_local_action",
+          "job_search.record_action_result"
+        ],
+        hardRules: [
+          "Do not send, upload, apply, or message externally from oXRM tools.",
+          "Do not invent CV claims, cover-letter facts, recruiter replies, or application submissions.",
+          "Use job_search.propose_action before work that needs a decision.",
+          "Use job_search.approve_action or job_search.reject_action to record the human decision.",
+          "Use job_search.run_local_action only for dry-run, draft-only, or local-only work.",
+          "Use job_search.record_action_result for external outcomes only after prior approval, human confirmation, and proof/reference."
+        ]
+      };
+    },
+
+    async listJobSearchSourceInbox(input: unknown = {}) {
+      const parsed = jobSearchSourceInboxListSchema.parse(input);
+      const records = await this.searchXrmRecords({
+        objectType: "raw_job_signal",
+        query: parsed.query,
+        limit: Math.max(parsed.limit, 100)
+      });
+      const filtered = parsed.status ? records.filter((record) => xrmField(record, "status") === parsed.status) : records;
+      return filtered.slice(0, parsed.limit);
+    },
+
+    async checkJobSearchDuplicate(input: unknown = {}) {
+      const parsed = jobSearchDuplicateCheckSchema.parse(input);
+      const job = parsed.jobId ? await this.getXrmRecord(parsed.jobId) : undefined;
+      const title = firstNonEmpty(parsed.title, xrmField(job, "title"), xrmField(job, "role"));
+      const company = firstNonEmpty(parsed.company, xrmField(job, "company"));
+      const location = firstNonEmpty(parsed.location, xrmField(job, "location"));
+      const url = firstNonEmpty(parsed.url, xrmField(job, "url"), xrmField(job, "postingUrl"));
+      const dedupeKey = parsed.dedupeKey || xrmField(job, "dedupeKey") || jobDedupeKey({ company, title, location, url });
+      const query = [company, title].filter(Boolean).join(" ") || url || dedupeKey;
+      const candidates = await this.searchXrmRecords({ objectType: "job", query, limit: 500 });
+      const normalizedUrl = normalizeUrl(url);
+      const normalizedTitle = normalizeName(title);
+      const normalizedCompany = normalizeName(company);
+
+      const matches = candidates
+        .filter((candidate) => candidate.id !== parsed.jobId)
+        .map((candidate) => {
+          const candidateUrl = normalizeUrl(xrmField(candidate, "url") || xrmField(candidate, "postingUrl"));
+          const candidateDedupeKey = xrmField(candidate, "dedupeKey") || jobDedupeKey({
+            company: xrmField(candidate, "company"),
+            title: xrmField(candidate, "title"),
+            location: xrmField(candidate, "location"),
+            url: candidateUrl
+          });
+          const exact =
+            (normalizedUrl && candidateUrl === normalizedUrl) ||
+            (dedupeKey && candidateDedupeKey === dedupeKey);
+          const possible =
+            !exact &&
+            normalizedCompany &&
+            normalizedTitle &&
+            normalizeName(xrmField(candidate, "company")) === normalizedCompany &&
+            normalizeName(xrmField(candidate, "title")) === normalizedTitle;
+          return exact || possible
+            ? {
+                id: candidate.id,
+                displayName: candidate.displayName,
+                externalKey: candidate.externalKey,
+                objectType: candidate.objectType?.slug,
+                match: exact ? "exact" : "possible",
+                fields: xrmFields(candidate)
+              }
+            : undefined;
+        })
+        .filter((candidate): candidate is NonNullable<typeof candidate> => Boolean(candidate));
+
+      const exactMatches = matches.filter((candidate) => candidate.match === "exact");
+      const possibleMatches = matches.filter((candidate) => candidate.match === "possible");
+      return {
+        input: { title, company, location, url, dedupeKey },
+        duplicateStatus: exactMatches.length > 0 ? "duplicate" : possibleMatches.length > 0 ? "possible_duplicate" : "clear",
+        exactMatches,
+        possibleMatches: possibleMatches.slice(0, parsed.limit),
+        recommendation:
+          exactMatches.length > 0
+            ? "Link to the existing job instead of creating another canonical job."
+            : possibleMatches.length > 0
+              ? "Review possible duplicates before promoting this signal."
+              : "No duplicate found. It is safe to promote a canonical job record."
+      };
+    },
+
+    async ingestJobSearchRawSignal(input: unknown) {
+      const parsed = jobSearchRawSignalSchema.parse(input);
+      const role = compactText(parsed.role ?? parsed.title);
+      const company = compactText(parsed.company);
+      const title = parsed.title || [role, company ? `at ${company}` : ""].filter(Boolean).join(" ") || "Raw job signal";
+      const receivedAt = parsed.receivedAt ?? new Date().toISOString();
+      const candidateJobKey = [company, role]
+        .map((value) => slugPart(String(value ?? "")))
+        .filter(Boolean)
+        .join(":") || slugPart(title);
+      const duplicateCheck = await this.checkJobSearchDuplicate({
+        title: role,
+        company,
+        location: parsed.location,
+        url: parsed.postingUrl,
+        dedupeKey: candidateJobKey
+      });
+      const record = await this.upsertXrmRecord({
+        objectType: "raw_job_signal",
+        externalKey: parsed.externalKey ?? `job-search:signal:${slugPart(`${title}-${receivedAt}`)}`,
+        displayName: title,
+        fields: {
+          title,
+          sourceTitle: parsed.sourceTitle,
+          sourceKind: parsed.sourceKind,
+          sourceUrl: parsed.sourceUrl,
+          receivedAt,
+          status: duplicateCheck.duplicateStatus === "duplicate" ? "matched_existing" : parsed.status,
+          company,
+          role,
+          location: parsed.location,
+          postingUrl: parsed.postingUrl,
+          rawText: parsed.rawText,
+          extractionStatus: parsed.extractionStatus,
+          dedupeStatus: duplicateCheck.duplicateStatus,
+          candidateJobKey,
+          agentNotes: parsed.agentNotes
+        },
+        status: "active",
+        source: "job_search_source_inbox",
+        metadata: { templateKey: "job_search", source: "job_search_source_inbox", ...(parsed.metadata ?? {}) }
+      });
+      return { record, duplicateCheck };
+    },
+
+    async promoteJobSearchSignalToJob(input: unknown) {
+      const parsed = jobSearchPromoteSignalSchema.parse(input);
+      const signal = await this.getXrmRecord(parsed.signalId);
+      if (!signal || signal.objectType?.slug !== "raw_job_signal") {
+        throw serviceError("raw_job_signal_not_found", 404, "raw_job_signal_not_found");
+      }
+      const signalFields = xrmFields(signal);
+      const role = firstNonEmpty(parsed.fields["title"], parsed.fields["role"], signalFields["role"], signalFields["title"]) ?? signal.displayName;
+      const company = firstNonEmpty(parsed.fields["company"], signalFields["company"]);
+      const url = firstNonEmpty(parsed.fields["url"], parsed.fields["postingUrl"], signalFields["postingUrl"], signalFields["sourceUrl"]);
+      const location = firstNonEmpty(parsed.fields["location"], signalFields["location"]);
+      const duplicateCheck = await this.checkJobSearchDuplicate({ title: role, company, location, url });
+      const existingJobId = parsed.jobId ?? duplicateCheck.exactMatches[0]?.id;
+
+      if (existingJobId) {
+        const existingJob = await this.getXrmRecord(existingJobId);
+        await this.upsertXrmRecord({
+          objectType: "raw_job_signal",
+          recordId: signal.id,
+          externalKey: signal.externalKey ?? undefined,
+          displayName: signal.displayName,
+          fields: {
+            ...signalFields,
+            status: "matched_existing",
+            dedupeStatus: "duplicate",
+            promotedJobId: existingJobId,
+            agentNotes: firstNonEmpty(signalFields["agentNotes"], "Matched existing job during promotion.")
+          },
+          status: signal.status,
+          source: signal.source ?? "job_search_source_inbox",
+          metadata: signal.metadata ?? {}
+        });
+        await this.linkXrmRecords({
+          relationshipType: "signal_matches_existing_job",
+          sourceRecordId: signal.id,
+          targetRecordId: existingJobId,
+          source: "job_search_source_inbox",
+          metadata: { duplicateCheck }
+        }).catch(() => undefined);
+        return { signal: await this.getXrmRecord(signal.id), job: existingJob, duplicateCheck, promoted: false };
+      }
+
+      if (!parsed.createJob) {
+        return { signal, job: null, duplicateCheck, promoted: false };
+      }
+
+      const dedupeKey = jobDedupeKey({ company, title: role, location, url });
+      const job = await this.upsertXrmRecord({
+        objectType: "job",
+        externalKey: `job-search:job:${slugPart(`${company ?? "unknown"}-${role}`)}`,
+        displayName: company ? `${role} at ${company}` : role,
+        fields: {
+          title: role,
+          company,
+          platform: signalFields["sourceTitle"],
+          location,
+          status: parsed.status,
+          fitRate: parsed.fields["fitRate"] ?? 0,
+          currentFitRate: parsed.fields["currentFitRate"] ?? parsed.fields["fitRate"] ?? 0,
+          pushableFitRate: parsed.fields["pushableFitRate"] ?? 0,
+          decisionState: "New",
+          applicationStage: "Not started",
+          canonicalJobKey: slugPart(`${company ?? "unknown"}-${role}`),
+          dedupeKey,
+          duplicateStatus: "canonical",
+          companyCanonicalName: company,
+          normalizedTitle: normalizeName(role),
+          discoveredAt: xrmField(signal, "receivedAt", new Date().toISOString()),
+          nextActionAt: new Date().toISOString(),
+          nextAction: "Calculate fit and decide whether to prepare an application packet.",
+          url,
+          sourceUrl: signalFields["sourceUrl"],
+          source: signalFields["sourceTitle"],
+          fullDescription: signalFields["rawText"],
+          description: (compactText(String(signalFields["rawText"] ?? "")) ?? "").slice(0, 240),
+          ...parsed.fields
+        },
+        status: "active",
+        source: "job_search_source_inbox",
+        metadata: { templateKey: "job_search", promotedFromSignalId: signal.id }
+      });
+      if (!job) {
+        throw serviceError("job_create_failed", 500, "job_create_failed");
+      }
+      await this.upsertXrmRecord({
+        objectType: "raw_job_signal",
+        recordId: signal.id,
+        externalKey: signal.externalKey ?? undefined,
+        displayName: signal.displayName,
+        fields: { ...signalFields, status: "promoted", dedupeStatus: "clear", promotedJobId: job.id },
+        status: signal.status,
+        source: signal.source ?? "job_search_source_inbox",
+        metadata: signal.metadata ?? {}
+      });
+      await this.linkXrmRecords({
+        relationshipType: "signal_promoted_to_job",
+        sourceRecordId: signal.id,
+        targetRecordId: job.id,
+        source: "job_search_source_inbox",
+        metadata: { duplicateCheck }
+      }).catch(() => undefined);
+      return { signal: await this.getXrmRecord(signal.id), job: await this.getXrmRecord(job.id), duplicateCheck, promoted: true };
+    },
+
+    async suggestJobSearchApplicationChannel(input: unknown) {
+      const parsed = jobSearchChannelSchema.parse(input);
+      const [job, application] = await Promise.all([
+        parsed.jobId ? this.getXrmRecord(parsed.jobId) : Promise.resolve(undefined),
+        parsed.applicationId ? this.getXrmRecord(parsed.applicationId) : Promise.resolve(undefined)
+      ]);
+      const source = firstNonEmpty(parsed.source, xrmField(job, "source"), xrmField(job, "platform"), xrmField(application, "source"));
+      const platform = firstNonEmpty(parsed.platform, xrmField(job, "platform"), xrmField(application, "externalPlatform"));
+      const directEmailAvailable =
+        parsed.directEmailAvailable ?? Boolean(parsed.contactEmail || xrmField(application, "targetEmail") || xrmField(job, "contactEmail"));
+      const platformApplyAvailable =
+        parsed.platformApplyAvailable ??
+        (["true", "yes", "1"].includes(xrmField(job, "platformApplyAvailable").toLowerCase()) ||
+          Boolean(xrmField(job, "externalApplyUrl") || xrmField(job, "url")));
+      const quickApplyAvailable = parsed.quickApplyAvailable ?? ["true", "yes", "1"].includes(xrmField(job, "quickApplyAvailable").toLowerCase());
+      const hasWarmSource = [source, platform].join(" ").toLowerCase().includes("warm") || Boolean(xrmField(application, "responsiblePerson"));
+
+      const suggestion = hasWarmSource && directEmailAvailable
+        ? {
+            channel: "warm_referral_first",
+            reason: "A warm contact or responsible person exists. Draft context and wait for human approval before external messaging."
+          }
+        : platformApplyAvailable && directEmailAvailable
+          ? {
+              channel: "platform_then_recruiter_email",
+              reason: "Use the canonical platform for submission, then use recruiter email only for approved follow-up."
+            }
+          : quickApplyAvailable
+            ? {
+                channel: "quick_apply_with_review",
+                reason: "Quick apply exists, but the human should review CV, packet, and submission state first."
+              }
+            : platformApplyAvailable
+              ? {
+                  channel: "company_careers",
+                  reason: "A platform/career URL is available and no warmer channel is known."
+                }
+              : {
+                  channel: "manual_research",
+                  reason: "No reliable application channel is known. Research contact or application URL before drafting."
+                };
+
+      return {
+        ...suggestion,
+        safetyClass: "human_external_action_required",
+        inputs: { source, platform, directEmailAvailable, platformApplyAvailable, quickApplyAvailable, hasWarmSource }
+      };
+    },
+
+    async prepareJobSearchApplicationPacket(input: unknown) {
+      const parsed = jobSearchApplicationPacketSchema.parse(input);
+      const [application, job, fit, cv, coverLetter, contact] = await Promise.all([
+        parsed.applicationId ? this.getXrmRecord(parsed.applicationId) : Promise.resolve(undefined),
+        parsed.jobId ? this.getXrmRecord(parsed.jobId) : Promise.resolve(undefined),
+        parsed.fitId ? this.getXrmRecord(parsed.fitId) : Promise.resolve(undefined),
+        parsed.cvVersionId ? this.getXrmRecord(parsed.cvVersionId) : Promise.resolve(undefined),
+        parsed.coverLetterId ? this.getXrmRecord(parsed.coverLetterId) : Promise.resolve(undefined),
+        parsed.targetContactId ? this.getXrmRecord(parsed.targetContactId) : Promise.resolve(undefined)
+      ]);
+      const role = firstNonEmpty(parsed.role, xrmField(application, "role"), xrmField(job, "title")) ?? "Application";
+      const company = firstNonEmpty(parsed.company, xrmField(application, "company"), xrmField(job, "company")) ?? "Company";
+      const channel =
+        firstNonEmpty(parsed.channel, xrmField(application, "channel"), xrmField(job, "applicationChannelRecommendation")) ??
+        (await this.suggestJobSearchApplicationChannel({ jobId: parsed.jobId, applicationId: parsed.applicationId })).channel;
+      const title = parsed.title ?? `${company} ${role} packet`;
+      const record = await this.upsertXrmRecord({
+        objectType: "application_packet",
+        externalKey: `job-search:packet:${slugPart(`${company}-${role}-${parsed.applicationId ?? parsed.jobId ?? Date.now()}`)}`,
+        displayName: title,
+        fields: {
+          title,
+          status: parsed.status,
+          company,
+          role,
+          applicationId: application?.displayName,
+          jobId: job?.displayName,
+          fitId: fit?.displayName,
+          cvVersionId: cv?.displayName,
+          coverLetterId: coverLetter?.displayName,
+          targetContactId: contact?.displayName,
+          channel,
+          approvalStatus: parsed.approvalStatus,
+          createdAt: new Date().toISOString(),
+          submittedAt: "",
+          packetSummary:
+            parsed.packetSummary ??
+            `Draft-only packet for ${role} at ${company}. Human must review CV, cover letter, target channel, and submission before external use.`,
+          humanReviewNotes: parsed.humanReviewNotes,
+          fileRefs: parsed.fileRefs
+        },
+        status: "active",
+        source: "job_search_packet",
+        metadata: { templateKey: "job_search", source: "job_search_packet", ...(parsed.metadata ?? {}) }
+      });
+      if (!record) {
+        throw serviceError("application_packet_create_failed", 500, "application_packet_create_failed");
+      }
+
+      const links = [
+        parsed.applicationId ? ["packet_for_application", parsed.applicationId] : undefined,
+        parsed.jobId ? ["packet_for_job", parsed.jobId] : undefined,
+        parsed.fitId ? ["packet_created_from_fit", parsed.fitId] : undefined,
+        parsed.cvVersionId ? ["packet_uses_cv", parsed.cvVersionId] : undefined,
+        parsed.coverLetterId ? ["packet_uses_cover_letter", parsed.coverLetterId] : undefined,
+        parsed.targetContactId ? ["packet_targets_contact", parsed.targetContactId] : undefined
+      ].filter((link): link is [string, string] => Boolean(link));
+      await Promise.all(
+        links.map(([relationshipType, targetRecordId]) =>
+          this.linkXrmRecords({
+            relationshipType,
+            sourceRecordId: record.id,
+            targetRecordId,
+            source: "job_search_packet",
+            metadata: { source: "job_search_packet" }
+          }).catch(() => undefined)
+        )
+      );
+
+      if (application) {
+        await this.upsertXrmRecord({
+          objectType: application.objectType?.slug ?? "application",
+          recordId: application.id,
+          externalKey: application.externalKey ?? undefined,
+          displayName: application.displayName,
+          fields: {
+            ...xrmFields(application),
+            applicationPacketId: title,
+            channel,
+            nextAction: "Review application packet and approve, revise, or archive.",
+            nextActionAt: new Date().toISOString()
+          },
+          status: application.status,
+          source: application.source ?? "job_search_packet",
+          metadata: application.metadata ?? {}
+        });
+      }
+
+      return this.getXrmRecord(record.id);
+    },
+
+    async getJobSearchApplicationLedger(input: unknown) {
+      const parsed = jobSearchApplicationLedgerSchema.parse(input);
+      const application = await this.getXrmRecord(parsed.applicationId);
+      if (!application || application.objectType?.slug !== "application") {
+        throw serviceError("application_not_found", 404, "application_not_found");
+      }
+      const events = await this.listXrmRecordEvents({ recordId: parsed.applicationId, limit: parsed.limit });
+      const relationships = await this.listXrmRelationships({ recordId: parsed.applicationId, limit: 100 });
+      return {
+        application,
+        events,
+        relationships,
+        summary: {
+          stage: xrmField(application, "stage"),
+          responsiblePerson: xrmField(application, "responsiblePerson"),
+          lastInboundAt: xrmField(application, "lastInboundAt"),
+          lastOutboundAt: xrmField(application, "lastOutboundAt"),
+          nextAction: xrmField(application, "nextAction"),
+          nextActionAt: xrmField(application, "nextActionAt")
+        }
+      };
+    },
+
+    async recordJobSearchApplicationEvent(input: unknown) {
+      const parsed = jobSearchApplicationEventSchema.parse(input);
+      const application = await this.getXrmRecord(parsed.applicationId);
+      if (!application || application.objectType?.slug !== "application") {
+        throw serviceError("application_not_found", 404, "application_not_found");
+      }
+      const externalOutboundEvent =
+        parsed.direction === "outbound" &&
+        ["connection_request_sent", "connection_sent", "message_sent", "inmail_sent", "email_sent"].includes(parsed.type);
+      if (externalOutboundEvent && (!parsed.humanConfirmed || !actionResultHasProof(parsed))) {
+        throw serviceError(
+          "external_application_event_requires_human_confirmation_and_proof",
+          409,
+          "external_application_event_requires_human_confirmation_and_proof"
+        );
+      }
+      const occurredAt = parsed.occurredAt ?? new Date().toISOString();
+      const event = await this.logActivity({
+        xrmRecordId: parsed.applicationId,
+        type: parsed.type,
+        channel: parsed.channel,
+        direction: parsed.direction,
+        subject: parsed.subject,
+        body: parsed.body,
+        externalUrl: parsed.externalUrl,
+        occurredAt,
+        idempotencyKey: parsed.idempotencyKey,
+        metadata: {
+          templateKey: "job_search",
+          source: "job_search_application_ledger",
+          externalReference: parsed.externalReference,
+          humanConfirmed: parsed.humanConfirmed,
+          confirmationSource: parsed.confirmationSource,
+          proof: parsed.proof,
+          ...(parsed.metadata ?? {})
+        }
+      });
+      const applicationFields = xrmFields(application);
+      const lastField = parsed.direction === "inbound" ? "lastInboundAt" : parsed.direction === "outbound" ? "lastOutboundAt" : undefined;
+      await this.upsertXrmRecord({
+        objectType: "application",
+        recordId: application.id,
+        externalKey: application.externalKey ?? undefined,
+        displayName: application.displayName,
+        fields: {
+          ...applicationFields,
+          ...(lastField ? { [lastField]: occurredAt } : {}),
+          lastTouchAt: occurredAt
+        },
+        status: application.status,
+        source: application.source ?? "job_search_application_ledger",
+        metadata: application.metadata ?? {}
+      });
+      return { event, application: await this.getXrmRecord(application.id) };
+    },
+
+    async getJobSearchActionQueue(input: unknown = {}) {
+      const parsed = jobSearchActionQueueSchema.parse(input);
+      const records = await this.searchXrmRecords({ objectType: "action_suggestion", query: "job_search", limit: Math.max(parsed.limit, 100) });
+      const filtered = records.filter((record) => {
+        if (xrmField(record, "templateKey") !== "job_search") return false;
+        if (parsed.status && xrmField(record, "status") !== parsed.status) return false;
+        return true;
+      });
+      return filtered.slice(0, parsed.limit);
+    },
+
+    async proposeJobSearchAction(input: unknown) {
+      const parsed = jobSearchActionProposalSchema.parse(input);
+      const target = await findXrmRecordByReference(db, parsed.targetObjectType, parsed.targetRecordId);
+      const now = new Date().toISOString();
+      const directExternalAction = actionKindDeclaresExternalEffect(parsed.actionKind);
+      const externalSafety = actionSafetyDeclaresExternalEffect(parsed.safetyClass);
+      const approvalRequired = parsed.approvalRequired || directExternalAction || externalSafety;
+      const approvalDecision = approvalRequired ? "pending" : "not_required";
+      const runId = parsed.runId ?? `job-search:run:${slugPart(`${parsed.actionKind}-${Date.now()}`)}`;
+      const targetRecordId = target?.id ?? parsed.targetRecordId ?? "";
+      const targetObjectType = parsed.targetObjectType ?? target?.objectType?.slug ?? "";
+      const fields = {
+        title: parsed.title,
+        templateKey: "job_search",
+        targetViewKey: parsed.targetViewKey ?? "",
+        targetObjectType,
+        targetRecordId,
+        targetRecord: parsed.targetRecord ?? target?.displayName ?? "",
+        actionKind: parsed.actionKind,
+        safetyClass: parsed.safetyClass,
+        status: approvalRequired ? "approval_required" : "proposed",
+        priority: parsed.priority,
+        confidence: parsed.confidence,
+        recommendedAction: parsed.recommendedAction,
+        reason: parsed.reason ?? "",
+        evidence: parsed.evidence ?? "",
+        draftOutput: parsed.draftOutput ?? "",
+        approvalRequired: approvalRequired ? "Human approval required before external effect" : "Not required for local-only action",
+        approvalReason:
+          parsed.approvalReason ??
+          (approvalRequired ? "The action can affect an external relationship or application state." : "Local-only action."),
+        approvalDecision,
+        approvalDecidedAt: "",
+        approvalDecidedBy: "",
+        approvalDecisionReason: "",
+        createdByAgent: parsed.createdByAgent,
+        runId,
+        resultStatus: "",
+        resultSummary: "",
+        externalEffectDeclared: false,
+        humanConfirmedExternalEffect: false,
+        externalEffectProof: "",
+        externalReference: "",
+        auditRef: parsed.auditRef ?? "",
+        dueAt: parsed.dueAt ?? now,
+        receiptComplete: Boolean(targetRecordId && parsed.safetyClass && parsed.evidence && runId && approvalDecision)
+      };
+      const action = await this.upsertXrmRecord({
+        objectType: "action_suggestion",
+        externalKey: `job-search:suggestion:${slugPart(`${parsed.actionKind}-${parsed.title}`)}-${Date.now()}`,
+        displayName: parsed.title,
+        fields,
+        status: approvalRequired ? "approval_required" : "active",
+        source: "job_search_action_queue",
+        metadata: { templateKey: "job_search", source: "job_search_action_queue", ...(parsed.metadata ?? {}) }
+      });
+      if (!action) {
+        throw serviceError("action_suggestion_create_failed", 500, "action_suggestion_create_failed");
+      }
+
+      if (target?.id && target.objectType?.slug) {
+        await this.linkXrmRecords({
+          relationshipType: `suggestion_for_${target.objectType.slug}`,
+          sourceRecordId: action.id,
+          targetRecordId: target.id,
+          source: "job_search_action_queue",
+          metadata: { source: "job_search_action_queue" }
+        }).catch(() => undefined);
+      }
+
+      let approval = null;
+      if (approvalRequired) {
+        approval = await this.upsertXrmRecord({
+          objectType: "approval_request",
+          externalKey: `job-search:approval:${action.id}`,
+          displayName: `Approve ${parsed.title}`,
+          fields: {
+            title: `Approve ${parsed.title}`,
+            templateKey: "job_search",
+            status: "pending",
+            requestedAction: parsed.recommendedAction,
+            decision: "pending",
+            owner: "Human operator",
+            requestedAt: now,
+            decidedAt: "",
+            actionSuggestionId: action.id,
+            targetRecordId,
+            evidence: parsed.evidence ?? "",
+            safetyClass: parsed.safetyClass
+          },
+          status: "pending",
+          source: "job_search_action_queue",
+          metadata: { templateKey: "job_search", source: "job_search_action_queue" }
+        });
+        if (approval) {
+          await this.linkXrmRecords({
+            relationshipType: "approval_for_suggestion",
+            sourceRecordId: approval.id,
+            targetRecordId: action.id,
+            source: "job_search_action_queue",
+            metadata: { source: "job_search_action_queue" }
+          }).catch(() => undefined);
+        }
+      }
+
+      return {
+        action: await this.getXrmRecord(action.id),
+        approval,
+        receipt: actionReceiptFields(fields)
+      };
+    },
+
+    async approveJobSearchAction(input: unknown) {
+      const parsed = jobSearchActionDecisionSchema.parse(input);
+      const action = await this.getXrmRecord(parsed.actionId);
+      if (!action || action.objectType?.slug !== "action_suggestion") {
+        throw serviceError("action_suggestion_not_found", 404, "action_suggestion_not_found");
+      }
+      if (actionIsRejected(action)) {
+        throw serviceError("action_suggestion_already_rejected", 409, "action_suggestion_already_rejected");
+      }
+
+      const now = new Date().toISOString();
+      const fields = {
+        ...xrmFields(action),
+        status: "approved",
+        approvalDecision: "approved",
+        approvalDecidedAt: now,
+        approvalDecidedBy: parsed.decidedBy,
+        approvalDecisionReason: parsed.decisionReason ?? "",
+        receiptComplete: true
+      };
+      await this.upsertXrmRecord({
+        objectType: "action_suggestion",
+        recordId: action.id,
+        externalKey: action.externalKey ?? undefined,
+        displayName: action.displayName,
+        fields,
+        status: "approved",
+        source: action.source ?? "job_search_action_queue",
+        metadata: action.metadata ?? {}
+      });
+
+      const relatedApprovals = (action.targetRelationships ?? [])
+        .filter((relationship) => relationship.relationshipType?.key === "approval_for_suggestion" && relationship.sourceRecord?.objectType?.slug === "approval_request")
+        .map((relationship) => relationship.sourceRecord)
+        .filter((record): record is NonNullable<typeof record> => Boolean(record));
+      await Promise.all(
+        relatedApprovals.map((approval) =>
+          this.upsertXrmRecord({
+            objectType: "approval_request",
+            recordId: approval.id,
+            externalKey: approval.externalKey ?? undefined,
+            displayName: approval.displayName,
+            fields: {
+              ...xrmFields(approval),
+              status: "approved",
+              decision: parsed.decisionReason ?? "approved",
+              decidedAt: now,
+              decidedBy: parsed.decidedBy
+            },
+            status: "approved",
+            source: approval.source ?? "job_search_action_queue",
+            metadata: approval.metadata ?? {}
+          })
+        )
+      );
+
+      return {
+        action: await this.getXrmRecord(action.id),
+        approvalsUpdated: relatedApprovals.length
+      };
+    },
+
+    async rejectJobSearchAction(input: unknown) {
+      const parsed = jobSearchActionDecisionSchema.parse(input);
+      const action = await this.getXrmRecord(parsed.actionId);
+      if (!action || action.objectType?.slug !== "action_suggestion") {
+        throw serviceError("action_suggestion_not_found", 404, "action_suggestion_not_found");
+      }
+      const now = new Date().toISOString();
+      const fields = {
+        ...xrmFields(action),
+        status: "rejected",
+        approvalDecision: "rejected",
+        approvalDecidedAt: now,
+        approvalDecidedBy: parsed.decidedBy,
+        approvalDecisionReason: parsed.decisionReason ?? ""
+      };
+      await this.upsertXrmRecord({
+        objectType: "action_suggestion",
+        recordId: action.id,
+        externalKey: action.externalKey ?? undefined,
+        displayName: action.displayName,
+        fields,
+        status: "rejected",
+        source: action.source ?? "job_search_action_queue",
+        metadata: action.metadata ?? {}
+      });
+
+      const relatedApprovals = (action.targetRelationships ?? [])
+        .filter((relationship) => relationship.relationshipType?.key === "approval_for_suggestion" && relationship.sourceRecord?.objectType?.slug === "approval_request")
+        .map((relationship) => relationship.sourceRecord)
+        .filter((record): record is NonNullable<typeof record> => Boolean(record));
+      await Promise.all(
+        relatedApprovals.map((approval) =>
+          this.upsertXrmRecord({
+            objectType: "approval_request",
+            recordId: approval.id,
+            externalKey: approval.externalKey ?? undefined,
+            displayName: approval.displayName,
+            fields: {
+              ...xrmFields(approval),
+              status: "rejected",
+              decision: parsed.decisionReason ?? "rejected",
+              decidedAt: now,
+              decidedBy: parsed.decidedBy
+            },
+            status: "rejected",
+            source: approval.source ?? "job_search_action_queue",
+            metadata: approval.metadata ?? {}
+          })
+        )
+      );
+
+      return {
+        action: await this.getXrmRecord(action.id),
+        approvalsUpdated: relatedApprovals.length
+      };
+    },
+
+    async runJobSearchLocalAction(input: unknown) {
+      const parsed = jobSearchActionLocalRunSchema.parse(input);
+      const action = await this.getXrmRecord(parsed.actionId);
+      if (!action || action.objectType?.slug !== "action_suggestion") {
+        throw serviceError("action_suggestion_not_found", 404, "action_suggestion_not_found");
+      }
+      if (actionIsRejected(action)) {
+        throw serviceError("rejected_action_cannot_run", 409, "rejected_action_cannot_run");
+      }
+      const fields = xrmFields(action);
+      const actionKind = xrmField(action, "actionKind");
+      const localSafe =
+        !actionKindDeclaresExternalEffect(actionKind) || /^(draft|prepare|review|calculate|rank|wait|summarize|create_task|update_record)/.test(actionKind.toLowerCase());
+      if (!localSafe) {
+        throw serviceError("external_action_cannot_run_as_local_action", 409, "external_action_cannot_run_as_local_action");
+      }
+
+      const now = new Date().toISOString();
+      const run = await this.upsertXrmRecord({
+        objectType: "action_run",
+        externalKey: `job-search:run:local:${action.id}:${Date.now()}`,
+        displayName: `Local run - ${action.displayName}`,
+        fields: {
+          title: `Local run - ${action.displayName}`,
+          templateKey: "job_search",
+          status: "completed",
+          mode: parsed.mode,
+          blueprint: actionKind,
+          startedAt: now,
+          finishedAt: now,
+          inputSummary: `Local ${parsed.mode} run for action suggestion ${action.displayName}.`,
+          outputSummary: parsed.outputSummary ?? "Local run completed. No external action was taken.",
+          inputSnapshot: {
+            actionId: action.id,
+            receipt: actionReceiptFields(fields)
+          },
+          outputSnapshot: parsed.outputSnapshot,
+          error: "",
+          externalEffectDeclared: false,
+          humanConfirmedExternalEffect: false,
+          externalEffectProof: "",
+          auditRef: parsed.auditRef ?? xrmField(action, "auditRef")
+        },
+        status: "completed",
+        source: "job_search_action_queue",
+        metadata: { templateKey: "job_search", source: "job_search_action_queue", operator: parsed.operator }
+      });
+      if (!run) {
+        throw serviceError("action_run_create_failed", 500, "action_run_create_failed");
+      }
+
+      await this.linkXrmRecords({
+        relationshipType: "run_for_suggestion",
+        sourceRecordId: run.id,
+        targetRecordId: action.id,
+        source: "job_search_action_queue",
+        metadata: { source: "job_search_action_queue" }
+      }).catch(() => undefined);
+
+      await this.upsertXrmRecord({
+        objectType: "action_suggestion",
+        recordId: action.id,
+        externalKey: action.externalKey ?? undefined,
+        displayName: action.displayName,
+        fields: {
+          ...fields,
+          status: "local_run_completed",
+          resultStatus: "local_completed",
+          resultSummary: parsed.outputSummary ?? "Local run completed. No external action was taken.",
+          lastRunId: run.id,
+          lastRunAt: now,
+          externalEffectDeclared: false
+        },
+        status: "active",
+        source: action.source ?? "job_search_action_queue",
+        metadata: action.metadata ?? {}
+      });
+
+      return {
+        run: await this.getXrmRecord(run.id),
+        action: await this.getXrmRecord(action.id)
+      };
+    },
+
+    async recordJobSearchActionResult(input: unknown) {
+      const parsed = jobSearchActionResultSchema.parse(input);
+      const action = await this.getXrmRecord(parsed.actionId);
+      if (!action || action.objectType?.slug !== "action_suggestion") {
+        throw serviceError("action_suggestion_not_found", 404, "action_suggestion_not_found");
+      }
+      if (actionIsRejected(action)) {
+        throw serviceError("rejected_action_cannot_record_result", 409, "rejected_action_cannot_record_result");
+      }
+      const externalEffectDeclared = actionResultDeclaresExternalEffect(parsed);
+      if (externalEffectDeclared && !actionIsApproved(action)) {
+        throw serviceError("external_action_result_requires_approval", 409, "external_action_result_requires_approval");
+      }
+      if (externalEffectDeclared && (!parsed.humanConfirmed || !actionResultHasProof(parsed))) {
+        throw serviceError("external_action_result_requires_human_confirmation_and_proof", 409, "external_action_result_requires_human_confirmation_and_proof");
+      }
+
+      const fields = xrmFields(action);
+      const now = new Date().toISOString();
+      const run = await this.upsertXrmRecord({
+        objectType: "action_run",
+        externalKey: `job-search:run:result:${action.id}:${Date.now()}`,
+        displayName: `Result - ${action.displayName}`,
+        fields: {
+          title: `Result - ${action.displayName}`,
+          templateKey: "job_search",
+          status: parsed.status,
+          mode: externalEffectDeclared ? "external_result_recorded" : "local_result_recorded",
+          blueprint: xrmField(action, "actionKind"),
+          startedAt: now,
+          finishedAt: now,
+          inputSummary: `Recorded ${parsed.resultType} for action suggestion ${action.displayName}.`,
+          outputSummary: parsed.outputSummary ?? "",
+          inputSnapshot: {
+            actionId: action.id,
+            receipt: actionReceiptFields(fields)
+          },
+          outputSnapshot: parsed.outputSnapshot,
+          error: parsed.error ?? "",
+          externalEffectDeclared,
+          humanConfirmedExternalEffect: parsed.humanConfirmed,
+          externalEffectProof: parsed.proof ?? "",
+          externalReference: parsed.externalReference ?? "",
+          externalUrl: parsed.externalUrl ?? "",
+          auditRef: parsed.auditRef ?? xrmField(action, "auditRef")
+        },
+        status: parsed.status,
+        source: "job_search_action_queue",
+        metadata: { templateKey: "job_search", source: "job_search_action_queue", recordedBy: parsed.recordedBy }
+      });
+      if (!run) {
+        throw serviceError("action_run_create_failed", 500, "action_run_create_failed");
+      }
+
+      await this.linkXrmRecords({
+        relationshipType: "run_for_suggestion",
+        sourceRecordId: run.id,
+        targetRecordId: action.id,
+        source: "job_search_action_queue",
+        metadata: { source: "job_search_action_queue" }
+      }).catch(() => undefined);
+
+      await this.upsertXrmRecord({
+        objectType: "action_suggestion",
+        recordId: action.id,
+        externalKey: action.externalKey ?? undefined,
+        displayName: action.displayName,
+        fields: {
+          ...fields,
+          status: externalEffectDeclared ? "external_result_recorded" : parsed.status,
+          resultStatus: parsed.status,
+          resultType: parsed.resultType,
+          resultSummary: parsed.outputSummary ?? "",
+          resultError: parsed.error ?? "",
+          lastRunId: run.id,
+          lastRunAt: now,
+          externalEffectDeclared,
+          humanConfirmedExternalEffect: parsed.humanConfirmed,
+          externalEffectProof: parsed.proof ?? "",
+          externalReference: parsed.externalReference ?? "",
+          externalUrl: parsed.externalUrl ?? ""
+        },
+        status: externalEffectDeclared ? "external_result_recorded" : parsed.status,
+        source: action.source ?? "job_search_action_queue",
+        metadata: action.metadata ?? {}
+      });
+
+      const target = await findXrmRecordByReference(db, xrmField(action, "targetObjectType"), xrmField(action, "targetRecordId"));
+      if (externalEffectDeclared && target?.objectType?.slug === "application") {
+        await this.recordJobSearchApplicationEvent({
+          applicationId: target.id,
+          type: parsed.resultType === "external_send" || parsed.resultType === "external_message" ? "email_sent" : "manual_note",
+          channel: "manual",
+          direction: "outbound",
+          subject: `Confirmed external action: ${action.displayName}`,
+          body: parsed.outputSummary,
+          externalUrl: parsed.externalUrl,
+          externalReference: parsed.externalReference,
+          humanConfirmed: parsed.humanConfirmed,
+          confirmationSource: parsed.recordedBy,
+          proof: parsed.proof,
+          occurredAt: now,
+          idempotencyKey: `job-search:action-result:${run.id}`,
+          metadata: { actionId: action.id, actionRunId: run.id, resultType: parsed.resultType }
+        });
+      }
+
+      return {
+        run: await this.getXrmRecord(run.id),
+        action: await this.getXrmRecord(action.id)
       };
     },
 
@@ -1958,17 +3360,38 @@ export function createCrmServices({ db, backupsRequired = false }: ServiceContex
         source: "job-search-setup",
         generatedAt: new Date().toISOString()
       };
+      const profileFields = buildJobSearchProfileFields(parsed);
       const activeSourceKeys = new Set(parsed.sources.map((source) => `job-search:setup:source:${slugPart(source.title)}`));
       const existingSetupSources = await this.searchXrmRecords({ objectType: "source_config", limit: 500 });
+      const isJobSearchSourceConfig = (record: { externalKey?: string | null; source?: string | null; metadata?: unknown }) =>
+        record.externalKey?.startsWith("job-search:setup:source:") ||
+        record.externalKey?.startsWith("job-search:source:") ||
+        record.source === "job-search-setup" ||
+        jsonObject(record.metadata)["templateKey"] === "job_search";
+
+      const profileRecord = await this.upsertXrmRecord({
+        objectType: "job_search_profile",
+        externalKey: "job-search:setup:profile:active",
+        displayName: profileFields.title,
+        fields: profileFields,
+        status: "active",
+        source: "job-search-setup",
+        metadata
+      });
 
       if (sourcesProvided) {
         await Promise.all(
           existingSetupSources
-            .filter((record) => record.externalKey?.startsWith("job-search:setup:source:") && !activeSourceKeys.has(record.externalKey))
+            .filter((record) => isJobSearchSourceConfig(record) && !activeSourceKeys.has(record.externalKey ?? ""))
             .map((record) =>
               db
                 .update(xrmRecords)
-                .set({ status: "archived", deletedAt: new Date(), updatedAt: new Date() })
+                .set({
+                  status: "archived",
+                  fields: { ...xrmFields(record), status: "archived" },
+                  deletedAt: new Date(),
+                  updatedAt: new Date()
+                })
                 .where(eq(xrmRecords.id, record.id))
             )
         );
@@ -2035,7 +3458,7 @@ export function createCrmServices({ db, backupsRequired = false }: ServiceContex
         },
         {
           key: "cv-editor",
-          title: "Create role-specific CV variants",
+          title: "Improve canonical CV fit",
           appliesToViewKey: "job_search.applications",
           appliesToObjectType: "application",
           trigger: "high_fit_application_candidate",
@@ -2049,7 +3472,7 @@ export function createCrmServices({ db, backupsRequired = false }: ServiceContex
           ]
             .filter(Boolean)
             .join("\n"),
-          outputs: "CV Version record with source path, output path, body or summary, and application link.",
+          outputs: "CV fit patch, edit summary, and optional updated canonical CV file after approval.",
           humanControl: "Humans approve factual claims, final wording, and external upload.",
           riskLevel: "high"
         },
@@ -2111,15 +3534,20 @@ export function createCrmServices({ db, backupsRequired = false }: ServiceContex
           objectType: "automation_timer",
           externalKey: "job-search:setup:timer:import-fit",
           displayName: "Daily source import and fit scoring",
-          fields: {
-            title: "Daily source import and fit scoring",
-            cadence: parsed.schedule.importCadence,
-            nextRunAt: null,
-            task: "Import configured sources, dedupe postings, preserve raw descriptions, and calculate job fit.",
-            blueprint: "Import job postings from configured sources; Calculate job fit with evidence",
-            approvalRequired: "No approval to score; approval required before applying or sending.",
-            status: "scheduled"
-          },
+	          fields: {
+	            title: "Daily source import and fit scoring",
+	            cadence: parsed.schedule.importCadence,
+	            timerKind: "source_import_and_fit",
+	            timezone: parsed.schedule.timezone,
+	            nextRunAt: null,
+	            lastRunAt: null,
+	            lastRunSummary: "Not run yet. This is an operating instruction until a scheduler/agent executes it.",
+	            runner: "manual_or_agent",
+	            task: "Import configured sources, dedupe postings, preserve raw descriptions, and calculate job fit.",
+	            blueprint: "Import job postings from configured sources; Calculate job fit with evidence",
+	            approvalRequired: "No approval to score; approval required before applying or sending.",
+	            status: "planned_manual"
+	          },
           status: "active",
           source: "job-search-setup",
           metadata
@@ -2128,22 +3556,27 @@ export function createCrmServices({ db, backupsRequired = false }: ServiceContex
           objectType: "automation_timer",
           externalKey: "job-search:setup:timer:review-drafts",
           displayName: "Daily review, drafts, and follow-ups",
-          fields: {
-            title: "Daily review, drafts, and follow-ups",
-            cadence: parsed.schedule.reviewCadence,
-            nextRunAt: null,
-            task: "Review high-fit suggestions, prepare CV and cover letter drafts, draft follow-ups, and create approval tasks.",
-            blueprint: "Create role-specific CV variants; Draft cover letters for high-fit applications; Draft recruiter and application follow-ups",
-            approvalRequired: parsed.automationPolicy.approvalRequired ? "Always required" : "Configured as optional",
-            status: "scheduled"
-          },
+	          fields: {
+	            title: "Daily review, drafts, and follow-ups",
+	            cadence: parsed.schedule.reviewCadence,
+	            timerKind: "drafts_and_followups",
+	            timezone: parsed.schedule.timezone,
+	            nextRunAt: null,
+	            lastRunAt: null,
+	            lastRunSummary: "Not run yet. This is an operating instruction until a scheduler/agent executes it.",
+	            runner: "manual_or_agent",
+	            task: "Review high-fit suggestions, prepare CV fit patches and cover letter drafts, draft follow-ups, and create approval tasks.",
+	            blueprint: "Improve canonical CV fit; Draft cover letters for high-fit applications; Draft recruiter and application follow-ups",
+	            approvalRequired: parsed.automationPolicy.approvalRequired ? "Always required" : "Configured as optional",
+	            status: "planned_manual"
+	          },
           status: "active",
           source: "job-search-setup",
           metadata
         })
       ]);
 
-      await this.upsertXrmRecord({
+      const playbookRecord = await this.upsertXrmRecord({
         objectType: "operator_playbook",
         externalKey: "job-search:playbook:generated",
         displayName: "Configured job search operating playbook",
@@ -2166,6 +3599,16 @@ export function createCrmServices({ db, backupsRequired = false }: ServiceContex
         source: "job-search-setup",
         metadata
       });
+
+      if (profileRecord?.id && playbookRecord?.id) {
+        await this.linkXrmRecords({
+          relationshipType: "setup_uses_profile",
+          sourceRecordId: playbookRecord.id,
+          targetRecordId: profileRecord.id,
+          source: "job-search-setup",
+          metadata
+        }).catch(() => undefined);
+      }
 
       const setup = await this.getJobSearchSetup();
       await this.syncJobSearchSetupTodos(setup.todos);
@@ -3048,6 +4491,169 @@ export function createCrmServices({ db, backupsRequired = false }: ServiceContex
           activity
         };
       });
+    },
+
+    async claimOutreachRecipients(input: unknown = {}) {
+      const parsed = outreachClaimSchema.parse(input);
+      const now = new Date();
+      const claimedAt = now.toISOString();
+      const runId = parsed.runId ?? `claim:${parsed.operator}:${now.getTime()}`;
+      const weekStart = new Date(now);
+      const day = weekStart.getUTCDay();
+      const daysSinceMonday = (day + 6) % 7;
+      weekStart.setUTCDate(weekStart.getUTCDate() - daysSinceMonday);
+      weekStart.setUTCHours(0, 0, 0, 0);
+      const dayStart = new Date(now);
+      dayStart.setUTCHours(0, 0, 0, 0);
+      const contactedStatuses = [
+        "invited_connect_note",
+        "sent_inmail",
+        "sent_inmail_manual",
+        "connected",
+        "replied",
+        "already_pending_connect"
+      ];
+      const statusList = sql.join(parsed.statuses.map((status) => sql`${status}`), sql`, `);
+      const contactedStatusList = sql.join(contactedStatuses.map((status) => sql`${status}`), sql`, `);
+      const campaignCondition = parsed.campaign ? sql`and xr.fields->>'campaign' = ${parsed.campaign}` : sql``;
+
+      const countResult = await db.execute(sql`
+        select
+          count(*) filter (where xr.fields->>'sentAt' >= ${weekStart.toISOString()})::int as "weeklySent",
+          count(*) filter (where xr.fields->>'sentAt' >= ${dayStart.toISOString()})::int as "dailySent"
+        from xrm_records xr
+        join xrm_object_types ot on ot.id = xr.object_type_id
+        where ot.slug = 'lead'
+          and xr.deleted_at is null
+          and xr.fields->>'outreachChannel' = ${parsed.channel}
+          and xr.fields->>'outreachStatus' in (${contactedStatusList})
+          and xr.fields ? 'sentAt'
+      `);
+      const sentCounts = queryRows<{ weeklySent?: number | string | null; dailySent?: number | string | null }>(countResult)[0] ?? {};
+      const weeklySent = Number(sentCounts.weeklySent ?? 0);
+      const dailySent = Number(sentCounts.dailySent ?? 0);
+      const weeklyRemaining = Math.max(0, parsed.weeklyCap - weeklySent);
+      const dailyRemaining = parsed.dailyCap === undefined ? parsed.limit : Math.max(0, parsed.dailyCap - dailySent);
+      const claimLimit = Math.min(parsed.limit, weeklyRemaining, dailyRemaining);
+
+      if (claimLimit <= 0) {
+        return {
+          runId,
+          claimedAt,
+          campaign: parsed.campaign ?? null,
+          channel: parsed.channel,
+          requested: parsed.limit,
+          claimed: 0,
+          recipients: [],
+          caps: {
+            weeklyCap: parsed.weeklyCap,
+            weeklySent,
+            weeklyRemaining,
+            dailyCap: parsed.dailyCap ?? null,
+            dailySent,
+            dailyRemaining: parsed.dailyCap === undefined ? null : dailyRemaining
+          }
+        };
+      }
+
+      const claimResult = await db.transaction(async (tx) => {
+        return tx.execute(sql`
+          with candidate as (
+            select xr.*
+            from xrm_records xr
+            join xrm_object_types ot on ot.id = xr.object_type_id
+            where ot.slug = 'lead'
+              and xr.deleted_at is null
+              and xr.status = 'active'
+              and xr.fields->>'outreachChannel' = ${parsed.channel}
+              and xr.fields->>'outreachStatus' in (${statusList})
+              and coalesce(xr.fields->>'hubspotContactId', '') <> ''
+              and coalesce(xr.fields->>'plannedMessage', '') <> ''
+              and coalesce(xr.fields->>'linkedinUrl', xr.fields->>'salesnavUrl', '') <> ''
+              ${campaignCondition}
+            order by xr.updated_at asc, xr.created_at asc
+            limit ${claimLimit}
+            for update skip locked
+          ),
+          updated as (
+            update xrm_records xr
+            set
+              fields = candidate.fields || jsonb_build_object(
+                'outreachStatus', 'claimed',
+                'claimedAt', ${claimedAt}::text,
+                'claimedBy', ${parsed.operator}::text,
+                'claimRunId', ${runId}::text,
+                'approvedAction', ${parsed.channel}::text
+              ),
+              metadata = candidate.metadata || jsonb_build_object(
+                'lastClaim', jsonb_build_object(
+                  'claimedAt', ${claimedAt}::text,
+                  'claimedBy', ${parsed.operator}::text,
+                  'claimRunId', ${runId}::text,
+                  'channel', ${parsed.channel}::text
+                )
+              ),
+              source = coalesce(candidate.source, 'oxrm_claim'),
+              updated_at = now()
+            from candidate
+            where xr.id = candidate.id
+            returning
+              xr.id,
+              xr.external_key as "externalKey",
+              xr.display_name as "displayName",
+              xr.fields,
+              xr.source,
+              xr.updated_at as "updatedAt"
+          )
+          select * from updated
+          order by "updatedAt" asc
+        `);
+      });
+      const records = queryRows<{
+        id: string;
+        externalKey: string | null;
+        displayName: string;
+        fields: Record<string, unknown>;
+        source: string | null;
+        updatedAt: Date | string;
+      }>(claimResult);
+
+      return {
+        runId,
+        claimedAt,
+        campaign: parsed.campaign ?? null,
+        channel: parsed.channel,
+        requested: parsed.limit,
+        claimed: records.length,
+        recipients: records.map((record) => {
+          const fields = jsonObject(record.fields);
+          return {
+            xrmRecordId: record.id,
+            externalKey: record.externalKey,
+            displayName: record.displayName,
+            hubspotContactId: String(fields["hubspotContactId"] ?? ""),
+            campaign: String(fields["campaign"] ?? ""),
+            sourceList: String(fields["sourceList"] ?? ""),
+            channel: parsed.channel,
+            action: parsed.channel,
+            linkedinUrl: String(fields["linkedinUrl"] ?? ""),
+            salesnavUrl: String(fields["salesnavUrl"] ?? ""),
+            message: String(fields["plannedMessage"] ?? ""),
+            claimedAt,
+            claimedBy: parsed.operator,
+            claimRunId: runId,
+            fields
+          };
+        }),
+        caps: {
+          weeklyCap: parsed.weeklyCap,
+          weeklySent,
+          weeklyRemaining: Math.max(0, weeklyRemaining - records.length),
+          dailyCap: parsed.dailyCap ?? null,
+          dailySent,
+          dailyRemaining: parsed.dailyCap === undefined ? null : Math.max(0, dailyRemaining - records.length)
+        }
+      };
     },
 
     async backfillLegacyOutreachEvents(input: unknown = {}) {

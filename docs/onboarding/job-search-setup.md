@@ -52,6 +52,9 @@ The setup flow writes normal XRM records:
 
 No separate setup table is used. Agents and humans read the same XRM records.
 
+After setup, the day-to-day operating model is documented in
+[job-search XRM operating model](../job-search-xrm-operating-model.md).
+
 ## Readiness contract
 
 Every setup response includes:
@@ -141,6 +144,8 @@ execute the loop until scheduled execution is wired for the relevant source.
 
 ```bash
 ./oxrm cli mcp:read oxrm://setup/job-search
+./oxrm cli mcp:read oxrm://profile/job-search
+./oxrm cli mcp:read oxrm://daily-contract/job-search
 ./oxrm cli mcp:read oxrm://playbook/job-search
 ./oxrm cli mcp:call job_search.get_setup --input '{}'
 ./oxrm cli mcp:call job_search.get_setup_next --input '{}'

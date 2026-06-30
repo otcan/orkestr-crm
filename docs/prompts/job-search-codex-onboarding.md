@@ -24,6 +24,7 @@ messages. Draft only.
    ```bash
    sed -n '1,220p' docs/start-with-codex.md
    sed -n '1,220p' docs/onboarding/job-search-setup.md
+   sed -n '1,260p' docs/job-search-xrm-operating-model.md
    sed -n '1,220p' docs/agent-job-search-loop.md
    ```
 
@@ -51,6 +52,8 @@ messages. Draft only.
    ```bash
    ./oxrm -i personal cli setup:job-search:next
    ./oxrm -i personal cli mcp:read oxrm://setup/job-search
+   ./oxrm -i personal cli mcp:read oxrm://profile/job-search
+   ./oxrm -i personal cli mcp:read oxrm://daily-contract/job-search
    ./oxrm -i personal cli mcp:read oxrm://playbook/job-search
    ```
 
@@ -83,7 +86,8 @@ messages. Draft only.
    - open setup todos
    - warnings
    - next recommended action
-   - the first three views I should open
+   - the first views I should open: Source Inbox, Jobs, Fit Review,
+     Applications, Packets, Ledger, and Actions
 
 9. Stop after setup. Do not apply to jobs or contact anyone.
 

@@ -3,7 +3,7 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from 
 import { allowedJobActions, type JobWorkflowActionKey, type JobWorkflowState } from "@oxrm/shared";
 import { XrmRecord } from "./models";
 
-type JobDetailTab = "overview" | "description" | "match" | "activity";
+type JobDetailTab = "overview" | "description" | "match" | "route" | "activity";
 
 @Component({
   selector: "oc-job-detail",
@@ -14,6 +14,7 @@ type JobDetailTab = "overview" | "description" | "match" | "activity";
       <button type="button" [class.active]="tab === 'overview'" (click)="tab = 'overview'">Overview</button>
       <button type="button" [class.active]="tab === 'description'" (click)="tab = 'description'">Description</button>
       <button type="button" [class.active]="tab === 'match'" (click)="tab = 'match'">Match</button>
+      <button type="button" [class.active]="tab === 'route'" (click)="tab = 'route'">Route</button>
       <button type="button" [class.active]="tab === 'activity'" (click)="tab = 'activity'">Activity</button>
     </section>
 
@@ -63,11 +64,31 @@ type JobDetailTab = "overview" | "description" | "match" | "activity";
     @if (tab === 'match') {
       <section class="detail-section">
         <dl class="detail-kv">
+          <div><dt>Current fit</dt><dd>{{ fitField("currentFitRate", field("fitRate", "0")) }}</dd></div>
+          <div><dt>Pushable fit</dt><dd>{{ fitField("pushableFitRate", "0") }}</dd></div>
+          <div><dt>Fit confidence</dt><dd>{{ fitField("fitConfidence", field("confidence", "0")) }}</dd></div>
           <div><dt>Selected CV</dt><dd>{{ field("recommendedCv", field("cvVersion", "No CV selected")) }}</dd></div>
           <div><dt>Strong matches</dt><dd>{{ field("matchingSkills", "No match notes recorded yet.") }}</dd></div>
           <div><dt>Missing skills</dt><dd>{{ field("missingSkills", "No missing skills recorded yet.") }}</dd></div>
           <div><dt>Risks</dt><dd>{{ field("riskNotes", "No risks recorded yet.") }}</dd></div>
+          <div><dt>Reason not higher</dt><dd>{{ field("reasonNotHigher", "No reason recorded.") }}</dd></div>
           <div><dt>Suggested action</dt><dd>{{ field("nextAction", "Decide whether to start an application.") }}</dd></div>
+        </dl>
+      </section>
+    }
+
+    @if (tab === 'route') {
+      <section class="detail-section">
+        <dl class="detail-kv">
+          <div><dt>Recommended channel</dt><dd>{{ human(field("applicationChannelRecommendation", "manual_research")) }}</dd></div>
+          <div><dt>Channel reason</dt><dd>{{ field("applicationChannelReason", "No channel reason recorded.") }}</dd></div>
+          <div><dt>Duplicate status</dt><dd>{{ human(field("duplicateStatus", "unchecked")) }}</dd></div>
+          <div><dt>Dedupe key</dt><dd>{{ field("dedupeKey", "Not recorded") }}</dd></div>
+          <div><dt>Quick apply</dt><dd>{{ booleanLabel(field("quickApplyAvailable", "")) }}</dd></div>
+          <div><dt>Platform apply</dt><dd>{{ booleanLabel(field("platformApplyAvailable", "")) }}</dd></div>
+          <div><dt>Direct email</dt><dd>{{ booleanLabel(field("directEmailAvailable", "")) }}</dd></div>
+          <div><dt>External apply URL</dt><dd>{{ field("externalApplyUrl", field("url", "Not recorded")) }}</dd></div>
+          <div><dt>Source URL</dt><dd>{{ field("sourceUrl", "Not recorded") }}</dd></div>
         </dl>
       </section>
     }
@@ -102,6 +123,17 @@ export class JobDetailComponent {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value;
     return date.toLocaleDateString([], { dateStyle: "medium" });
+  }
+
+  fitField(key: string, fallback = "0") {
+    const value = this.field(key, fallback);
+    const numberValue = Number(value);
+    return Number.isFinite(numberValue) ? `${numberValue}%` : value;
+  }
+
+  booleanLabel(value: string) {
+    if (!value) return "Unknown";
+    return ["true", "yes", "1"].includes(value.toLowerCase()) ? "Yes" : "No";
   }
 
   human(value: unknown) {

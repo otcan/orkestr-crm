@@ -42,7 +42,8 @@ emails, LinkedIn messages, CVs, cover letters, applications, uploads, or
 recruiter messages.
 
 After cloning, read docs/start-with-codex.md,
-docs/onboarding/job-search-setup.md, and docs/agent-job-search-loop.md.
+docs/onboarding/job-search-setup.md, docs/job-search-xrm-operating-model.md,
+and docs/agent-job-search-loop.md.
 
 Run:
 ./oxrm doctor
@@ -51,6 +52,8 @@ Run:
 ./oxrm -i personal urls
 ./oxrm -i personal cli setup:job-search:next
 ./oxrm -i personal cli mcp:read oxrm://setup/job-search
+./oxrm -i personal cli mcp:read oxrm://profile/job-search
+./oxrm -i personal cli mcp:read oxrm://daily-contract/job-search
 
 Ask me the missing essentials: target roles, constraints, skills, exclusions,
 base CV, cover-letter template, job sources, and daily review time.
@@ -81,6 +84,9 @@ follow-up tasks.
 The job-search structure is XRM-native: job postings, job fits, applications,
 CV versions, cover letters, communication ledger entries, and action
 suggestions are records with relationships, tasks, events, and files.
+
+Read the full operating model in
+[docs/job-search-xrm-operating-model.md](docs/job-search-xrm-operating-model.md).
 
 Open `/setup/job-search` to configure sources, CV policy, cover-letter policy,
 fit scoring, timers, and the agent playbook.
@@ -132,13 +138,7 @@ Normal usage runs through Docker:
 ./oxrm urls
 ```
 
-`./oxrm init` assigns local ports automatically. Print them with `./oxrm urls`:
-
-```text
-Web: http://127.0.0.1:<web-port>
-API health: http://127.0.0.1:<api-port>/api/health
-MCP health: http://127.0.0.1:<mcp-port>/health
-```
+`./oxrm init` assigns local ports automatically. Print them with `./oxrm urls`.
 
 `./oxrm ready` runs migrations and baseline seed only. Demo records are opt-in:
 
@@ -189,7 +189,7 @@ still supported beside `OXRM_API_URL` and `OXRM_MCP_URL`.
 ## Docs
 
 Start with [Start here](docs/start-here.md), [Onboarding](docs/onboarding.md), [Job search setup](docs/onboarding/job-search-setup.md), [Outreach setup](docs/onboarding/outreach-setup.md), and [XRM model](docs/xrm-model.md).
-Assistant docs: [Agent job search loop](docs/agent-job-search-loop.md), [Codex demo](docs/codex-demo.md), and [MCP](docs/mcp.md).
+Assistant docs: [Agent job search loop](docs/agent-job-search-loop.md), [Job search XRM operating model](docs/job-search-xrm-operating-model.md), [Codex demo](docs/codex-demo.md), and [MCP](docs/mcp.md).
 Use cases: [Job search](docs/use-cases/job-search.md) and [Customer outreach](docs/use-cases/customer-outreach.md). Operations: [Live demos](docs/live-demos.md) and [Troubleshooting](docs/troubleshooting.md).
 
 `./ocrm` is a deprecated compatibility wrapper around `./oxrm` for one release.

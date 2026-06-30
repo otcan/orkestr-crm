@@ -58,13 +58,14 @@ const viewSortSchema = z.object({
   field: viewFieldSchema,
   direction: z.enum(["asc", "desc"]).default("asc")
 });
+const viewLayoutSchema = z.enum(["table", "cards", "timeline", "board", "queue"]);
 const createViewSchema = {
   key: z.string().min(2).max(96).regex(/^[a-z][a-z0-9_.-]*$/),
   name: z.string().min(1),
   description: z.string().optional(),
   objectType: xrmSlugSchema,
   templateKey: xrmSlugSchema.optional(),
-  layout: z.enum(["table", "cards", "timeline"]).default("table"),
+  layout: viewLayoutSchema.default("table"),
   columns: z.array(viewFieldSchema).default([]),
   filters: z.array(viewFilterSchema).default([]),
   sort: z.array(viewSortSchema).default([]),
@@ -73,6 +74,35 @@ const createViewSchema = {
 };
 
 const jobSearchSetupToolSchema = {
+  profile: z
+    .object({
+      title: z.string().min(1).default("Default job-search profile"),
+      targetRoles: z.array(z.string()).default([]),
+      targetLocations: z.array(z.string()).default([]),
+      workMode: z.string().default("remote_or_hybrid"),
+      seniority: z.string().default("senior"),
+      mustHave: z.array(z.string()).default([]),
+      niceToHave: z.array(z.string()).default([]),
+      exclusions: z.array(z.string()).default([]),
+      preferredApplicationChannels: z.array(z.string()).default(["warm_referral_first", "company_careers", "platform_then_recruiter_email"]),
+      fitThreshold: z.number().int().min(0).max(100).default(75),
+      pushableThreshold: z.number().int().min(0).max(100).default(85),
+      agentInstructions: z.string().optional(),
+      humanInstructions: z.string().optional()
+    })
+    .default({
+      title: "Default job-search profile",
+      targetRoles: [],
+      targetLocations: [],
+      workMode: "remote_or_hybrid",
+      seniority: "senior",
+      mustHave: [],
+      niceToHave: [],
+      exclusions: [],
+      preferredApplicationChannels: ["warm_referral_first", "company_careers", "platform_then_recruiter_email"],
+      fitThreshold: 75,
+      pushableThreshold: 85
+    }),
   sources: z
     .array(
       z.object({
@@ -87,12 +117,12 @@ const jobSearchSetupToolSchema = {
     .default([]),
   cvStrategy: z
     .object({
-      mode: z.enum(["master", "master_plus_variants", "role_specific", "manual"]).default("master_plus_variants"),
+      mode: z.enum(["master", "master_plus_variants", "role_specific", "manual"]).default("master"),
       baseCvPath: z.string().optional(),
       variantPolicy: z.string().optional(),
       editorInstructions: z.string().optional()
     })
-    .default({ mode: "master_plus_variants" }),
+    .default({ mode: "master" }),
   coverLetterStrategy: z
     .object({
       mode: z.enum(["never", "high_fit_only", "every_application", "manual"]).default("high_fit_only"),
@@ -138,6 +168,45 @@ const jobSearchSetupToolSchema = {
     .default({ channels: ["in_app"], digestCadence: "daily" }),
   notes: z.string().optional()
 };
+
+const jobSearchRawSignalToolSchema = {
+  externalKey: z.string().optional(),
+  title: z.string().optional(),
+  sourceTitle: z.string().default("Manual source"),
+  sourceKind: z.string().default("manual"),
+  sourceUrl: z.string().optional(),
+  receivedAt: z.string().datetime().optional(),
+  status: z.string().default("new"),
+  company: z.string().optional(),
+  role: z.string().optional(),
+  location: z.string().optional(),
+  postingUrl: z.string().optional(),
+  rawText: z.string().optional(),
+  extractionStatus: z.string().default("manual"),
+  dedupeStatus: z.string().default("unchecked"),
+  agentNotes: z.string().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional()
+};
+
+const jobSearchApplicationEventTypeSchema = z
+  .enum([
+    "connection_request_sent",
+    "connection_request_received",
+    "connection_sent",
+    "connection_accepted",
+    "message_sent",
+    "message_received",
+    "inmail_sent",
+    "email_sent",
+    "email_received",
+    "follow_up_due",
+    "booking_created",
+    "meeting_booked",
+    "not_interested",
+    "converted",
+    "manual_note"
+  ])
+  .default("manual_note");
 
 const serverInstructions = `
 oXRM is a local-first outreach workspace for high-context job search, customer
@@ -197,6 +266,14 @@ export async function buildMcpHttpServer() {
 
     server.resource("oxrm.setup.job_search", "oxrm://setup/job-search", async (uri) => ({
       contents: [{ uri: uri.href, text: JSON.stringify(await tools.services.getJobSearchSetup(), null, 2) }]
+    }));
+
+    server.resource("oxrm.profile.job_search", "oxrm://profile/job-search", async (uri) => ({
+      contents: [{ uri: uri.href, text: JSON.stringify(await tools.services.getJobSearchProfile(), null, 2) }]
+    }));
+
+    server.resource("oxrm.daily_contract.job_search", "oxrm://daily-contract/job-search", async (uri) => ({
+      contents: [{ uri: uri.href, text: JSON.stringify(await tools.services.getJobSearchDailyContract(), null, 2) }]
     }));
 
     server.resource("oxrm.playbook.job_search", "oxrm://playbook/job-search", async (uri) => {
@@ -346,7 +423,7 @@ export async function buildMcpHttpServer() {
           description: z.string().optional(),
           objectType: xrmSlugSchema.optional(),
           templateKey: xrmSlugSchema.optional(),
-          layout: z.enum(["table", "cards", "timeline"]).optional(),
+          layout: viewLayoutSchema.optional(),
           columns: z.array(viewFieldSchema).optional(),
           filters: z.array(viewFilterSchema).optional(),
           sort: z.array(viewSortSchema).optional(),
@@ -554,6 +631,230 @@ export async function buildMcpHttpServer() {
       async (input) => toContent(await tools.services.configureJobSearchSetup(input))
     );
 
+    server.tool("job_search.get_profile", "Read the active job-search profile used for scoring, drafting, and routing.", {}, async () =>
+      toContent(await tools.services.getJobSearchProfile())
+    );
+
+    server.tool(
+      "job_search.get_daily_contract",
+      "Read the agent/human operating contract for today's job-search loop.",
+      {},
+      async () => toContent(await tools.services.getJobSearchDailyContract())
+    );
+
+    server.tool(
+      "job_search.list_source_inbox",
+      "List raw job postings, alerts, recruiter emails, or pasted URLs before canonical promotion.",
+      {
+        query: z.string().optional(),
+        status: z.string().optional(),
+        limit: z.number().int().min(1).max(500).default(100)
+      },
+      async (input) => toContent(await tools.services.listJobSearchSourceInbox(input))
+    );
+
+    server.tool(
+      "job_search.ingest_raw_signal",
+      "Create a raw job signal from a source. This does not apply to the job or contact anyone.",
+      jobSearchRawSignalToolSchema,
+      async (input) => toContent(await tools.services.ingestJobSearchRawSignal(input))
+    );
+
+    server.tool(
+      "job_search.check_duplicate",
+      "Check whether a job posting appears to duplicate an existing canonical job.",
+      {
+        jobId: z.string().uuid().optional(),
+        title: z.string().optional(),
+        company: z.string().optional(),
+        location: z.string().optional(),
+        url: z.string().optional(),
+        dedupeKey: z.string().optional(),
+        limit: z.number().int().min(1).max(100).default(20)
+      },
+      async (input) => toContent(await tools.services.checkJobSearchDuplicate(input))
+    );
+
+    server.tool(
+      "job_search.promote_signal_to_job",
+      "Promote a raw job signal to a canonical job record after duplicate review.",
+      {
+        signalId: z.string().uuid(),
+        jobId: z.string().uuid().optional(),
+        createJob: z.boolean().default(true),
+        fields: z.record(z.string(), z.unknown()).default({}),
+        status: z.string().default("open")
+      },
+      async (input) => toContent(await tools.services.promoteJobSearchSignalToJob(input))
+    );
+
+    server.tool(
+      "job_search.suggest_application_channel",
+      "Recommend the safest draft-only application route for a job/application.",
+      {
+        jobId: z.string().uuid().optional(),
+        applicationId: z.string().uuid().optional(),
+        contactEmail: z.string().optional(),
+        platform: z.string().optional(),
+        source: z.string().optional(),
+        quickApplyAvailable: z.boolean().optional(),
+        platformApplyAvailable: z.boolean().optional(),
+        directEmailAvailable: z.boolean().optional()
+      },
+      async (input) => toContent(await tools.services.suggestJobSearchApplicationChannel(input))
+    );
+
+    server.tool(
+      "job_search.prepare_application_packet",
+      "Create a draft-only application packet tying together job, fit, CV, cover letter, contact, channel, and approval state.",
+      {
+        applicationId: z.string().uuid().optional(),
+        jobId: z.string().uuid().optional(),
+        fitId: z.string().uuid().optional(),
+        cvVersionId: z.string().uuid().optional(),
+        coverLetterId: z.string().uuid().optional(),
+        targetContactId: z.string().uuid().optional(),
+        title: z.string().optional(),
+        company: z.string().optional(),
+        role: z.string().optional(),
+        channel: z.string().optional(),
+        status: z.string().default("draft"),
+        approvalStatus: z.string().default("needs_human_review"),
+        packetSummary: z.string().optional(),
+        humanReviewNotes: z.string().optional(),
+        fileRefs: z.array(z.string()).default([]),
+        metadata: z.record(z.string(), z.unknown()).optional()
+      },
+      async (input) => toContent(await tools.services.prepareJobSearchApplicationPacket(input))
+    );
+
+    server.tool(
+      "job_search.get_application_ledger",
+      "Read one application's communication ledger, linked records, and next-action summary.",
+      {
+        applicationId: z.string().uuid(),
+        limit: z.number().int().min(1).max(200).default(100)
+      },
+      async (input) => toContent(await tools.services.getJobSearchApplicationLedger(input))
+    );
+
+    server.tool(
+      "job_search.record_application_event",
+      "Record a confirmed application communication event. Use only after a human confirms the external action happened.",
+      {
+        applicationId: z.string().uuid(),
+        type: jobSearchApplicationEventTypeSchema,
+        channel: z.enum(["linkedin", "salesnav", "email", "scheduler", "manual"]).default("manual"),
+        direction: z.enum(["outbound", "inbound", "internal"]).default("internal"),
+        subject: z.string().optional(),
+        body: z.string().optional(),
+        externalUrl: z.string().url().optional(),
+        externalReference: z.string().optional(),
+        humanConfirmed: z.boolean().default(false),
+        confirmationSource: z.string().optional(),
+        proof: z.string().optional(),
+        occurredAt: z.string().datetime().optional(),
+        idempotencyKey: z.string().optional(),
+        metadata: z.record(z.string(), z.unknown()).optional()
+      },
+      async (input) => toContent(await tools.services.recordJobSearchApplicationEvent(input))
+    );
+
+    server.tool(
+      "job_search.get_action_queue",
+      "List job-search action suggestions that require review, approval, or local execution.",
+      {
+        status: z.string().optional(),
+        limit: z.number().int().min(1).max(200).default(100)
+      },
+      async (input) => toContent(await tools.services.getJobSearchActionQueue(input))
+    );
+
+    server.tool(
+      "job_search.propose_action",
+      "Create an approval-aware job-search action suggestion. This does not send, upload, apply, or message externally.",
+      {
+        title: z.string().min(1),
+        targetViewKey: z.string().optional(),
+        targetObjectType: z.string().optional(),
+        targetRecordId: z.string().optional(),
+        targetRecord: z.string().optional(),
+        actionKind: z.string().min(1),
+        safetyClass: z.string().default("human_decision_required"),
+        priority: z.number().int().min(0).max(10).default(1),
+        confidence: z.number().int().min(0).max(100).default(50),
+        recommendedAction: z.string().min(1),
+        reason: z.string().optional(),
+        evidence: z.string().optional(),
+        draftOutput: z.string().optional(),
+        approvalRequired: z.boolean().default(true),
+        approvalReason: z.string().optional(),
+        createdByAgent: z.string().default("agent"),
+        runId: z.string().optional(),
+        auditRef: z.string().optional(),
+        dueAt: z.string().datetime().optional(),
+        metadata: z.record(z.string(), z.unknown()).optional()
+      },
+      async (input) => toContent(await tools.services.proposeJobSearchAction(input))
+    );
+
+    server.tool(
+      "job_search.approve_action",
+      "Record explicit human approval for a proposed action. Approval still does not prove that an external action happened.",
+      {
+        actionId: z.string().uuid(),
+        decidedBy: z.string().default("human"),
+        decisionReason: z.string().optional()
+      },
+      async (input) => toContent(await tools.services.approveJobSearchAction(input))
+    );
+
+    server.tool(
+      "job_search.reject_action",
+      "Record explicit human rejection for a proposed action.",
+      {
+        actionId: z.string().uuid(),
+        decidedBy: z.string().default("human"),
+        decisionReason: z.string().optional()
+      },
+      async (input) => toContent(await tools.services.rejectJobSearchAction(input))
+    );
+
+    server.tool(
+      "job_search.run_local_action",
+      "Record a dry-run, draft-only, or local-only action run. This tool rejects direct external actions.",
+      {
+        actionId: z.string().uuid(),
+        mode: z.enum(["dry_run", "draft_only", "local_only"]).default("draft_only"),
+        outputSummary: z.string().optional(),
+        outputSnapshot: z.record(z.string(), z.unknown()).default({}),
+        operator: z.string().default("agent"),
+        auditRef: z.string().optional()
+      },
+      async (input) => toContent(await tools.services.runJobSearchLocalAction(input))
+    );
+
+    server.tool(
+      "job_search.record_action_result",
+      "Record a local result or a human-confirmed external result. External results require prior approval plus proof/reference.",
+      {
+        actionId: z.string().uuid(),
+        status: z.enum(["completed", "failed", "skipped"]).default("completed"),
+        resultType: z.enum(["local_only", "draft_created", "external_send", "external_upload", "external_apply", "external_message"]).default("local_only"),
+        outputSummary: z.string().optional(),
+        outputSnapshot: z.record(z.string(), z.unknown()).default({}),
+        error: z.string().optional(),
+        externalEffectDeclared: z.boolean().default(false),
+        humanConfirmed: z.boolean().default(false),
+        proof: z.string().optional(),
+        externalReference: z.string().optional(),
+        externalUrl: z.string().url().optional(),
+        recordedBy: z.string().default("human"),
+        auditRef: z.string().optional()
+      },
+      async (input) => toContent(await tools.services.recordJobSearchActionResult(input))
+    );
+
     server.tool(
       "xrm.list_views",
       "List saved views for generic oXRM object types and optional template keys.",
@@ -567,7 +868,7 @@ export async function buildMcpHttpServer() {
 
     server.tool(
       "xrm.create_view",
-      "Create a saved table/cards/timeline view for a generic oXRM object type.",
+      "Create a saved table/cards/timeline/board/queue view for a generic oXRM object type.",
       createViewSchema,
       async (input) => toContent(await tools.services.createView(input))
     );

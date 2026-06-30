@@ -42,6 +42,22 @@
         />
       }
 
+      @case ("Source Inbox") {
+        <oc-job-xrm-list-page
+          [search]="sourceInboxSearch()"
+          searchPlaceholder="Source, role, company, URL"
+          [rows]="jobSourceInboxRows()"
+          [columns]="viewColumns(jobSourceInbox(), ['title', 'sourceTitle', 'company', 'role', 'status', 'dedupeStatus', 'receivedAt', 'postingUrl'])"
+          [selectedId]="selectedRecordId()"
+          noun="signals"
+          primaryActionLabel="+ Add signal"
+          emptyText="No source signals yet. Add a posting, alert, recruiter email, or pasted job URL."
+          (searchChange)="setSourceInboxSearch($event)"
+          (add)="startCreateRecord('raw_job_signal')"
+          (open)="selectRecordRow($event)"
+        />
+      }
+
       @case ("Applications") {
         <div class="secondary-page-actions">
           <button type="button" (click)="openCvLibrary()">CV library</button>
@@ -85,6 +101,86 @@
           (add)="startCreateJob()"
           (open)="selectRecordRow($event)"
           (runAction)="runJobActionFromRow($event)"
+        />
+      }
+
+      @case ("Fit Review") {
+        <oc-job-xrm-list-page
+          [search]="fitReviewSearch()"
+          searchPlaceholder="Role, company, score, gap"
+          [rows]="jobFitRows()"
+          [columns]="viewColumns(jobFits(), ['title', 'currentFitRate', 'pushableFitRate', 'confidence', 'recommendedAction', 'reasonNotHigher', 'evaluatedAt'])"
+          [selectedId]="selectedRecordId()"
+          noun="fits"
+          primaryActionLabel="+ Add fit"
+          emptyText="No fit evaluations yet. Score a canonical job before preparing an application packet."
+          (searchChange)="setFitReviewSearch($event)"
+          (add)="startCreateRecord('job_fit')"
+          (open)="selectRecordRow($event)"
+        />
+      }
+
+      @case ("Packets") {
+        <oc-job-xrm-list-page
+          [search]="packetSearch()"
+          searchPlaceholder="Company, role, channel, approval"
+          [rows]="jobPacketRows()"
+          [columns]="viewColumns(jobPackets(), ['title', 'company', 'role', 'channel', 'approvalStatus', 'status', 'createdAt', 'submittedAt'])"
+          [selectedId]="selectedRecordId()"
+          noun="packets"
+          primaryActionLabel="+ Add packet"
+          emptyText="No application packets yet. Packets should stay draft-only until reviewed."
+          (searchChange)="setPacketSearch($event)"
+          (add)="startCreateRecord('application_packet')"
+          (open)="selectRecordRow($event)"
+        />
+      }
+
+      @case ("CV Bank") {
+        <oc-job-xrm-list-page
+          [search]="cvBankSearch()"
+          searchPlaceholder="CV, role, focus, path"
+          [rows]="jobCvBankRows()"
+          [columns]="viewColumns(jobCvBank(), ['title', 'version', 'baseTemplate', 'derivedFor', 'status', 'language', 'focus', 'sourcePath', 'lastUsedAt'])"
+          [selectedId]="selectedRecordId()"
+          noun="documents"
+          primaryActionLabel="+ Add CV"
+          emptyText="No CV versions yet. Add a base CV or role-specific draft before applying."
+          (searchChange)="setCvBankSearch($event)"
+          (add)="startCreateRecord('cv_version')"
+          (open)="selectRecordRow($event)"
+        />
+      }
+
+      @case ("Ledger") {
+        <oc-job-xrm-list-page
+          [search]="ledgerSearch()"
+          searchPlaceholder="Application, company, contact, follow-up"
+          [rows]="jobLedgerRows()"
+          [columns]="viewColumns(jobLedger(), ['role', 'company', 'stage', 'responsiblePerson', 'lastInboundAt', 'lastOutboundAt', 'nextAction', 'nextActionAt'])"
+          [selectedId]="selectedRecordId()"
+          noun="applications"
+          primaryActionLabel="+ Add application"
+          emptyText="No application ledger rows yet. Record applications and confirmed communications here."
+          (searchChange)="setLedgerSearch($event)"
+          (add)="startCreateApplication()"
+          (open)="selectRecordRow($event)"
+        />
+      }
+
+      @case ("Actions") {
+        <oc-job-xrm-list-page
+          [search]="actionSearch()"
+          searchPlaceholder="Action, target, approval, status"
+          [rows]="jobActionRows()"
+          [columns]="viewColumns(jobActions(), ['title', 'targetViewKey', 'targetRecord', 'actionKind', 'safetyClass', 'status', 'approvalDecision', 'externalEffectDeclared', 'receiptComplete', 'priority', 'confidence', 'dueAt'])"
+          [selectedId]="selectedRecordId()"
+          noun="actions"
+          primaryActionLabel="+ Add suggestion"
+          emptyText="No action suggestions yet. Agents can propose actions here, but humans approve external work."
+          (searchChange)="setActionSearch($event)"
+          (add)="startCreateRecord('action_suggestion')"
+          (open)="selectRecordRow($event)"
         />
       }
 

@@ -421,10 +421,10 @@ function defaultSetupForm(): JobSearchSetupInput {
   return {
     sources: [],
     cvStrategy: {
-      mode: "master_plus_variants",
+      mode: "master",
       baseCvPath: "./data/job-search/cv/master.md",
-      variantPolicy: "Create role-specific variants only for high-fit jobs.",
-      editorInstructions: "Preserve factual claims. Tailor summary, relevant projects, and keywords to the job description."
+      variantPolicy: "Improve the canonical/base CV for fit. Do not create additional CV versions unless explicitly approved for a specific role.",
+      editorInstructions: "Draft concise patch suggestions against the canonical CV. Preserve factual claims and tailor summary, relevant projects, and keywords to the job description."
     },
     coverLetterStrategy: {
       mode: "high_fit_only",

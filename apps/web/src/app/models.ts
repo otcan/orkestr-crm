@@ -202,7 +202,7 @@ export interface ViewDefinition {
   description?: string | null;
   objectType: string;
   templateKey?: string | null;
-  layout: "table" | "cards" | "timeline";
+  layout: "table" | "cards" | "timeline" | "board" | "queue";
   columns: string[];
   filters: Array<Record<string, unknown>>;
   sort: Array<Record<string, unknown>>;
@@ -443,8 +443,14 @@ export interface JobSearchSetupSummary {
 export type NavItem =
   | "Today"
   | "Setup"
+  | "Source Inbox"
+  | "Fit Review"
   | "Applications"
   | "Jobs"
+  | "Packets"
+  | "CV Bank"
+  | "Ledger"
+  | "Actions"
   | "Contacts"
   | "Pipeline"
   | "People"
